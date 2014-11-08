@@ -1,0 +1,101 @@
+; 'header' die aan eind programma kan komen voor bij gebruik van
+; wd 2793 bios v4.1
+; (c) 1991 by XelaSoft
+; A. Wulms
+; Pelikaanhof 143 d
+; 2312 EH Leiden
+; 3-8-1991
+
+*l-
+
+; ***********************
+; * De jump table
+
+init_all:	equ eind+  0
+init_part:	equ eind+  3
+restore_all:	equ eind+  6
+dubbel_enkel:	equ eind+  9
+trackup:	equ eind+ 12
+logtrackup:	equ eind+ 15
+trackdown:	equ eind+ 18
+logtrackdown:	equ eind+ 21
+strch:		equ eind+ 24
+dtrch:		equ eind+ 27
+strdown:	equ eind+ 30
+dtrdown:	equ eind+ 33
+selecdra:	equ eind+ 36
+selecdrb:	equ eind+ 39
+drive_off:	equ eind+ 42
+biterrprint:	equ eind+ 45
+cursetwrt:	equ eind+ 48
+cursetrd:	equ eind+ 51
+cursaddr:	equ eind+ 54
+antwoord:	equ eind+ 57
+reportwd:	equ eind+ 60
+printhl:	equ eind+ 63
+printsp:	equ eind+ 66
+sel_drivea:	equ eind+ 69
+sel_driveb:	equ eind+ 72
+step_in:	equ eind+ 75
+step_out:	equ eind+ 78
+seek_track:	equ eind+ 81
+res_drive:	equ eind+ 84
+side0:		equ eind+ 87
+side1:		equ eind+ 90
+selec_sec:	equ eind+ 93
+sec_vrm:	equ eind+ 96
+sec_ram:	equ eind+ 99
+adm_ram:	equ eind+102
+trk_ram:	equ eind+105
+drv_vrm:	equ eind+108
+drv_ram:	equ eind+111
+vrm_sec:	equ eind+114
+ram_sec:	equ eind+117
+ram_trk:	equ eind+120
+vrm_drv:	equ eind+123
+ram_drv:	equ eind+126
+set_command:	equ eind+129
+exe_command:	equ eind+132
+wacht30ms:	equ eind+135
+getversion:	equ eind+138
+err_end:	equ eind+141
+
+; ***********************
+; * De variabelen
+
+kopa:		equ eind+#c6
+kopb:		equ eind+#c7
+seca:		equ eind+#c8
+secb:		equ eind+#c9
+sidea:		equ eind+#ca
+sideb:		equ eind+#cb
+
+lezen:		equ eind+#cc
+
+bdrive:		equ eind+#cd
+singles:	equ eind+#ce
+lastdrive:	equ eind+#cf
+
+fout:		equ eind+#d0
+
+save_fd9a:	equ eind+#d1
+save_fd9f:	equ eind+#d2
+
+maxtrack:	equ eind+#d3
+
+ant_yes:	equ eind+#d4
+ant_no:		equ eind+#d5
+
+errtab1:	equ eind+#d6
+errtab2:	equ eind+#d8
+errtab3:	equ eind+#da
+
+track_reg:	equ eind+#dc
+sector_reg:	equ eind+#dd
+side_reg:	equ eind+#de
+
+writefirst:	equ eind+#df
+readfirst:	equ eind+#e0
+c7ffd:		equ eind+#e1
+*l+
+

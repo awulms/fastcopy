@@ -1,0 +1,1437 @@
+                   DOCUMENTATIÅ BIÊ WD-279³ BIOÓ VERSIÅ 4.0
+
+
+
+    Heô pakkeô vooò då wd-279³ bioó v4.° bestaaô uiô ³ bestanden¬ nl:
+          1º WD-LINK4.DAT
+          2º WD-LINK4.COM
+          3º WD-HEAD4.GEN
+
+    Iî heô bestanä WÄ-LINK4.DAÔ zitteî allå routineó eî variabeleî waaò  då 
+    bioó uiô bestaat.
+    Dezå  kunneî  vervolgenó ondeò msø-doó aaî  eeî  machinetaaì  programmá 
+    wordeî gekoppelä dooò iî tå typen:
+          WÄ-LINK´  PROG.EXT¬  meô PROG.EXÔ då naaí vaî heô programma®  Heô 
+    bestanä  WÄ-LINK4.COÍ kijkô daî naaò heô einä adreó vaî  PROG.EXÔ  (diô 
+    moeô duó eeî BLOAÄ machinetaaì programmá zijn)¬ eî koppelô wä-link4.daô 
+    achteò diô einä adreó aaî heô ml-programma.
+
+    Iî WÄ-HEAD.GEÎ staaî eeî aantaì handigå constanteó vooò heô gebruië vaî 
+    då  wä-279³  bioó meô behulð vaî assemblù  programma'ó  geschreveî  meô 
+    devpaã 80.
+    Då tå volgeî methodå ió daî aló volgt:
+    Schrijæ jå sourcå meô ed8° (oæ eeî anderå teksô editor© oð då  volgendå 
+    manier:
+     DEFÂ #FE
+     DEF× BEGIN
+     DEF× EIND-1
+     DEF× BEGIN
+
+     ORÇ #C00° » diô kaî ooë iedeò andeò begiî adreó zijî daô jå leuë vindt
+
+    BEGIN:
+               » vanaæ hieò kaî jå eigeî kodå komen
+
+    EINDº      » nõ ió jou÷ kodå duó afgelopen
+    INCLUDÅ WD-HEAD4.GEÎ   » verteì devpaã oí då headeò meå iî tå linken
+
+
+    Iî då bijlagå staaô eeî printouô vaî dezå header¬ zodaô jå precieó kunô 
+    zieî waô eò vooò konstanteó iî zijî gedefineerd® Då algemenå opbou÷ vaî 
+    då  headeò  ió daô eersô då adresseî vaî då  wä-279³  drivå  controlleò 
+    registeró  wordeî gedefineerd¬ hierná komeî allå routineó diå  viá  eeî 
+    jumptablå  bereikô  kunneî  worden¬ eî achteò dezå  routineó  komeî  då 
+    variabeleî  diå då wä-279³ bioó zelæ gebruikt® Iî då bioó ió eò  achteò 
+    då jumptablå noç eeî legå ruimtå vaî 6° byteó opgenomeî vooò  eventueeì 
+    toekomstigå uitbreidingeî (eò kunneî duó noç 2° routineó biê komen)¬ eî 
+    achteò  då  variabeleî  declaratieó  ió noç eeî  ruimtå  vaî  3°  byteó 
+    opgenomen.
+
+    Daî nõ eersô då variabeleî vaî då bios¬ dezå zijn:
+    kopaº  defâ °     » actuelå positiå vaî då koð vaî drivå A
+    kopbº  defâ °     » actuelå positiå vaî då koð vaî drivå B
+    secaº  defâ 1     » actuelå sectoò binneî huidigå tracë vaî drivå AŠ    secbº  defâ 1     » zelfde¬ alleeî nõ vooò drivå B
+    sideaº defâ °     » actuelå kant oð drivå A
+    sidebº defâ °     » actuelå kant oð drivå B
+
+    Zoaló  aì uiô dezå variabeleî blijkô werkô dezå bioó nieô meô  logischå 
+    sectoò  nummeró  zoaló msø-doó daô normaaì doet¬ biê  dezå  bioó  wordô 
+    uitgegaaî  vaî  då  fysiekå  sectoò nummeró zoaló  zå  oð  eeî  floppiå 
+    opstaan® Biê standaarä geformatteerdå msø schijveî ió diô nummeò ±  toô 
+    eî meô 9.
+    Naaò  dezå groeð vaî variabeleî wordô verdeò iî då uitleç verwezeî  aló 
+    då drivå systeeí variabelen.
+
+    Nõ verdeò meô då opsomminç vaî då variabelen:
+    lezenº     defâ  °   » boolean¬ diå aangeefô oæ jå wilô lezeî of
+                         » schrijven¬ dezå booleaî wordô nieô dooò då
+                         » bioó gebruikt¬ maaò ió weì handiç aló hulp-
+                         » variabelå biê jå programma's
+    bdriveº    defâ °    » 0=geeî B-drivå aanwezig¬ 1=weì B-drivå aanwezig
+    singlesº   defâ °    » 0=floð ió dubbelzijdiç ¬ 1=floð ió enkelzijdig,
+                         » dezå variabelå wordô ingevulä dooò då bios
+                         » functieº dubbel_enkel
+    lastdriveº defâ °    » 0=Á waó laatsô actieæ  ¬ 1=Â waó laatsô actief
+    foutº      defâ °    » 0=weì wd279³ aanweziç  ¬ 1=geeî wd279³ aanwezig
+                         » wordô ingevulä dooò bioó functieº init_all
+    save_fd9aº defâ °    » kopiå vaî interrupô hooë #fd9a
+    save_fd9fº defâ °    » kopiå vaî interrupô hooë #fd9f
+                         » Då interrupô hookó wordeî dooô init_alì oð RET
+                         » gezeô¬ oí tå voorkomeî daô då standaard
+                         » interrupô routinå då driveó uiô zet¬ terwijì ze
+                         » dooò diô programmá ziêî aangezet.
+    maxtrackº  defâ 8±   » Hoogsô toå gestaaî tracë nummer¬ dezå variabele
+                         » wordô gebruikô dooò bioó functies:
+                         »  trackuð eî logtrackup
+    antw_yesº  defâ "Y¢  » defaulô letteò vooò Já biê vrageî diå oí een
+                         » Nee/Já antwoordô vragen.
+    antw_noº   defâ "N¢  » defaulô letteò vooò Neå biê diô soorô vragen
+                         » Dezå ² variabaleî wordeî gebruikô biê då functie
+                         »   antwoord
+    errtab1º   def÷ errtxt±  » pointeò naaò defaulô erroò tablå biê
+                             » typå É drivå commando's
+    errtab2º   def÷ errtxt²  » pointeò naaò defaulô erroò tablå biê
+                             » typå IÉ drivå commando's
+    errtab3º   def÷ errtxt³  » pointeò naaò defautì erroò tablå bij 
+                             » typå IIÉ drivå commando's
+                         » Dezå erroò table'ó zijî iî eeî geschikô formaat
+                         » vooò gebruikô vaî då bioó functieº biterrprint
+
+
+    Vervolgenó komeî då ingebouwdå bioó functies¬ dezå zijî tå bereikeî viá 
+    eeî  jumptable¬ diå aló eerstå iî då bioó staat® Heô  makkelijksô  gaaô 
+    diô  dooò då headeò tå includen¬ oæ zelfó vollediç iî tå lezeî  biê  jå 
+    sourcå eî daî då routineó aaî tå roepeî meô huî defaulô namen¬ zoaló ië 
+    zå heâ gedefinieerä iî då header.Š
+    Aló  jå duó ergenó då routinå init_alì wilô gebruikeî zeç jå gewooî  iî 
+    jå sourcåº calì init_all
+    Aló  då  sourcå daî ooë noç ió opgebouwä volgenó heô  boveî  omschreveî 
+    systeeí¬ daî gaaô alleó goed.
+
+    init_all:
+      inº  -
+      uitº -
+      wijzigtº HL,DE,BC,AF,DI,interrupô hooks¬sloô indeling
+    Dezå routinå initialiseerô allå bioó systeeí variabelen¬ onderzoekô  då 
+    aanwezigheiä vaî då wä-279³ drivå controlleò eî då aanwezigheiä vaî eeî 
+    â-drive®  (Heô  feiô  oæ  då computeò  meô  ctrì  waó  opgestarô  wordô 
+    genegeerd¬ duó aló eò eeî b-drivå ió wordô diå altijä gevonden).
+    Då  systeeí  variabeleî wordeî ingestelä oð då defaulô  waardeó  iî  då 
+    bovenstaandå opsomming.
+    Då interrupô hookó wordeî beideî oð REÔ gezeô (eî eersô gekopieerä naaò 
+    save_fd9á eî save_fd9f).
+    Iî fouô wordô gezeô oæ då wä-279³ aanweziç isº ° ió weì aanwezig¬ ±  ió 
+    nieô (± isº eò ió ietó fouô gegaan¬ ° isº eò ió nikó fouô gegaan).
+    Iî  bdrivå wordô gezeô oæ eò eeî â-drivå aanweziç isº ° ió niet¬  ±  ió 
+    wel.
+    Iî  lastdrive™ wordô ° gezeô oí aaî tå geveî daô då á-drivå  heô  laatsô 
+    actieæ was.
+    Då driveó zijî ná dezå routinå uit.
+    Då sloô indelinç ió hierná aló volgt:
+      pagå ° (0000..3fff©  º onveranderd
+      pagå ± (4000..7fff©  º sloô adreó vaî drivå interface
+      pagå ² (8000..bfff©  º onveranderd
+      pagå ³ (c000..ffff©  º onveranderd
+    Dezå  sloô  indelinç meô oð pagå ± då drivå interfacå  ingeschakelä  ió 
+    noodzakelijë vooò allå anderå aanwezigå routineó diå ietó meô då  drivå 
+    doeî  omdaô ziê nieô zelæ då sloô indelinç gaaî aanpassen¬ eî då  drivå 
+    interfacå alleeî aaî tå stureî ió aló hiê iî eeî actieæ sloô zit.
+    Psº  zoaló aì uiô då defaulô waardeó vooò då drivå  systeeí  variabelen™ 
+    blijkô  staaî då koppeî vaî då driveó ná dezå routinå oð tracë 0¬  sidå 
+    0¬ sectoò 1
+
+
+    init_part:
+      inº  -
+      uitº -
+      wijzigtº AF,B
+    Dezå routinå reseô beidå drives¬ waô inhouä daô zå wordeî ingestelä  oð 
+    tracë 0¬ sidå 0¬ sectoò 1® Indieî alleeî eeî á-drivå aanweziç ió  wordô 
+    alleeî  dezå gereset® Ooë då drivå systeeí variabeleî wordeî  aangepasô 
+    aaî dezå situatie.
+    Ná dezå routinå zijî beidå drive'ó uiô eî staaô lastdrive™ weeò oð 0.
+
+
+    restore_all:
+      inº  -
+      uitº -Š      wijzigtº AF,HL,BC,DE,DI,slots,interrupô hooks
+    Dezå routinå herstelô weeò jå begiî situatie® Zå zeô då interrupô hookó 
+    namelijë weeò teruç oð då waardåó iî save_fd9a™ eî save_fd9f,
+    oð  pagå  ±  (adreó  4000..7fff©  wordô  weeò  då  msø-roí   bios/basiã 
+    ingeschakelä (Diô omdaô dezå bioó tocè alleeî achteò bloaä fileó ió  tå 
+    linken¬  eî då opstarô situatiå daî duó ió daô dezå waó  ingeschakeld)¬ 
+    då  driveó  wordeî gereset¬ zodaô då disë-basiã kaî zieî waaò  zå  zijî 
+    achteò gelateî dooò heô programma¬ eî då driveó wordeî uitgeschakeld.
+    Dezå routinå moeô altijä wordeî aangeroepeî voordaô jå teruç gaaô  naaò 
+    (disk© basic¬ omdaô anderó noç då drivå interfacå eî då drivå-romó zijî 
+    ingeschakeld¬ waô onherroepelijë toô eeî vastlopeò leidt¬ daaò då basiã 
+    interpreteò actieæ moeô zijn.
+
+
+    dubbel_enkel:
+      inº  -
+      uitº A=° º floppiå ió dubbelzijdig¬ A=± º floppiå ió enkelzijdig
+      wijzigtº F,B,DI
+    Dezå  routinå onderzoekô oæ då floppiå iî då actievå drivå  (dezå  moeô 
+    aanstaan©   enkeì­ daî weì dubbelzijdiç is® 
+    Heô resultaaô vaî diô onderzoeë komô iî då Accõ eî iî singles™ tå staan.
+    Aló  heô resultaaô enkelzijdiç is¬ zoõ diô ooë kunneî betekeneî daô  då 
+    floppiå iî feitå dubbelzijdiç was¬ maaò daô eò eeî aantaì trackó oð  då 
+    achterkanô kapoô is® Heô ió aaî tå radeî oí då gebruikeò iî zo'î  gevaì 
+    tå vrageî oæ då floppiå enkeì- oæ dubbelzijdiç is.
+
+
+    trackup:
+      inº  -
+      uitº -
+      wijzigtº AF,HL,AF'
+    Dezå routinå gaat¬ aló då koð positiå kleineò ió daî (maxtrack)™ naaò då 
+    volgendå  track®  Då drivå moeô biê aanroeð  aanstaan®  Heô  sector_reg™ 
+    wordô oð ± gezet.
+
+
+    logtrackup:
+      inº  -
+      uitº -
+      wijzigtº AF,HL,AF'
+    Dezå  routinå  gaat¬  aló då koð positiå  kleineò  ió  daî  (maxtrack)¬ 
+    side_reg=1™ naaò då volgendå logischå track® Diô houdô in¬ daô aló  sidå 
+    °  actieæ  was¬ daô daî naaò sidå ± wordô gegaan¬ terwijì  aló  sidå  ± 
+    actieæ  was¬  daô  daî  naaò sidå ° wordô gegaaî eî  då  koð  naaò  heô 
+    volgendå tracë wordô gestuurd® Då drivå moeô biê aanroeð aanstaan®  Heô 
+    sectoò_reg™ wordô iî beidå gevalleî oð ± gezet.
+
+
+    trackdown:
+      inº  -
+      uitº -
+      wijzigtº AF,AF'
+    Dezå  routinå  gaat¬  aló då koð positiå groteò ió  daî  0¬  eeî  tracë Š    omlaag®  Då drivå moeô biê aanroeð aanstaan® Heô sector_reg™ wordô oð  ± 
+    gezet.
+
+
+    logtrackdown:
+      inº  -
+      uitº -
+      wijzigtº AF,AF'
+    Dezå  routinå doeô precieó heô omgekeerdå vaî logtrackup®  Ooë  hierbiê 
+    moeô då drivå weeò aanstaan® eî wordô heô sector_reg™ oð ± gezet.
+
+
+    strch:
+      inº  -
+      uitº -
+      wijzigtº AF,AF'
+    Dezå routinå verhoogô heô tracë meô ± eî zeô heô sector_reg™ oð 1.
+    Eò wordô nieô gecontrolleerä oð maxtrack.
+
+
+    dtrch:
+      inº  -
+      uitº -
+      wijzigtº AF,AF'
+    Dezå routinå verhoogô heô tracë logiscè eî zeô sector_reg™ oð 1.
+    Eò wordô nieô gecontrolleerä oð maxtrack.
+
+
+    strdown:
+      inº  -
+      uitº -
+      wijzigtº AF,AF'
+    Dezå routinå verlaagô tracë meô ± eî zeô sector_reg™ oð 1.
+    Eò  wordô nieô gecontrolleerä oð tracë 0® Dezå controllå  wordô  echteò 
+    weì  dooò  då drivå controlleò uitgevoerd¬ duó aló jå tracë  °  aì  haä 
+    bereikô gebeurô eò iî feitå tocè niks.
+
+
+    dtrdown:
+      inº  -
+      uitº -
+      wijzigtº AF,AF'
+    Dezå  routinå  gaaô weeò eeî logiscè tracë omlaag¬  waarbiê  sector_reg™ 
+    weeò  oð  ±  wordô  gezet® Ooë nõ worä eò  nieô  gekontroleerä  oð  heô 
+    bereikeî  vaî  tracë  0¬ duó då sidå zaì  daî  tocè  gewisselä  blijveî 
+    worden¬ terwijì då koð nieô verdeò terugloopô omdaô då drivå controlleò 
+    daô nieô accepteerd.
+
+    Ps® Biê aì dezå routineó moesô då drivå aanstaan.
+    Ps2®  Dezå  routineó  passeî  då drivå  systeeí  variabelen™  nieô  aan¬ 
+    aangezieî zå direkô meô då drivå controlleò registeró werken.
+
+Š    selecdra:
+      inº  -
+      uitº Ã aló drivå nieô klaaò is¬ NÃ aló drivå weì klaaò is
+      wijzigtº AF,B
+    Dezå  routinå selecteerô drivå Á fysisch¬ då drivå  systeeí  variabelen™ 
+    wordeî nieô aangepast¬ duó aló drivå Â actieæ waó wordeî då  controlleò 
+    registeró nieô gekopieerä iî då drivå systeeí variabelen® Ooë lastdrive™ 
+    wordô nieô aangepast.
+
+
+    selecdrb:
+      inº  -
+      uitº C,Ú  aló då drivå nieô aanweziç ió (eî då Accõ ió daî 0)
+           C,NZ aló då drivå aanweziç is¬ echteò nieô klaaò
+           NÃ   aló då drivå klaaò (eî duó ooë aanwezig© is.
+      wijzigtº AF,B
+    Dezå routinå selecteerô drivå Â fysiscè indiåî dezå aanweziç is.
+    Då drivå systeeí variabelen™ eî lastdrive™ wordeî weeò nieô aangepast.
+
+    Aló ± vaî dezå ² routineó aangeefô daô då drivå nieô klaaò is¬ daî komô 
+    diô oveò heô  algemeeî doordaô eò geeî floppiå iî zit.
+
+
+    drive_off:
+      inº  -
+      uitº -
+      wijzigtº -
+    Dezå routinå zeô då driveó uit.
+
+
+    biterrprint:
+      inº HÌ wijsô naaò eeî tabeì meô ¸ texô pointers
+          Accõ bitó geveî aaî welkå teksteî moeteî wordeî geprint.
+            biô · ½ ± ==¾ prinô teksô 0
+            biô ¶ ½ ± ==¾ prinô teksô 1
+             ü  ü ü ü  ü    ü     ü   |
+            biô ° ½ ± ==¾ prinô teksô 7
+      uitº -
+      wijzigtº AF,HL,BC,EI
+    Dezå  routinå prinô eeî aantaì foutmeldingeî (oæ anderå  berichten©  oð 
+    heô scherí aaî då hanä vaî eeî tabeì meô teksô pointeró (HÌ wijsô  naaò 
+    dezå tabel)¬ eî då inhouä vaî då accu® Då routinå reseô tevenó då drivå 
+    controller¬  zodaô nieuwå drivå commando'ó weeò goeä gaan®  Då  teksteî 
+    moeteî zijî afgesloteî meô eeî 0-byte.
+
+    Vb® vaî gebruik:
+      lä hl,tabel
+      lä a,%0000100±   » duó 100± binair
+      calì biterrprint
+      
+    tabelº def÷ tekst1,tekst2,tekst3,tekst4,tekst5,tekst6,tekst7
+    tekst1º db 'regeì 1',13,10,0
+    tekst2º db 'regeì 2',13,10,0Š    tekst3º dâ 'regeì 3',13,10,0
+    tekst4º dâ 'regeì 4',13,10,0
+    tekst5º dâ 'regeì 5',13,10,0
+    tekst6º dâ 'regeì 6',13,10,0
+    tekst7º dâ 'regeì 7',13,10,0
+    tekst8º dâ 'regeì 8',13,10,0
+    
+    Diô programmaatjå heefô aló resultaaô daô wordô afgedrukt:
+    regel5
+    regel8
+
+    Dezå  routinå  ió vooraì handiç iî samenwerkinç meô då  drivå  leeó  eî 
+    schrijæ  commando's® Dezå routineó geveî iî då accõ namelijë då  statuó 
+    vaî  då drivå controlleò terug¬ duó aló eò ietó waó misgegaaî  zijî  då 
+    meô  diå  fouteî corresponderendå bitjeó geset® Iî dezå  bioó  zijî  då 
+    teksôåî ingebouwä diå biê då verschillendå fouteî horen.
+    Vb®  vaî  diô gebruikô meô då functiå sec_ram™ (Dezå geefô eeî  typå  IÉ 
+    staôuó bytå terug)
+    calì sec_ram
+    lä hl,(errtab2©  » erroò tabeì biê typå IÉ status
+    calì biterrprinô » prinô eventuelå foutmeldingeî oð scherm
+
+
+    Ná dezå echtå drivå routineó komeî eeî aantaì teksô routineó diå handiç 
+    zijî  vooò  då  schermopbouw® Dezå routineó gaaî eò vanuiô  daô  jå  oð 
+    screeî  °  werkt¬ meô 8° kolomó scherm¬ eî daô då namentabeì  starô  oð 
+    adreó 0® (Standaarä situatiå naº screeî 0:widtè 8° ondeò msx-basic)
+
+
+    cursetwrt:
+      inº  -
+      uitº -
+      wijzigtº HL,AF,DI
+    Dezå routinå zeô då vdð oð schrijveî iî då namentabel® Heô adreó  vanaæ 
+    waaò jå kunô gaaî schrijveî naaò vraí wordô berekenä aaî då hanä vaî då 
+    huidigå  msø-bioó  cursoò positie¬ waarbiê då eerstå bytå diå  jå  naaò 
+    vraí stuurô oð då huidigå cursoò positiå komô tå staan.
+
+
+    cursetrd:
+      inº  -
+      uitº -
+      wijzigtº HL,AF,DI
+    Dezå  routinå  zeô då vdð oð lezeî uiô då namentabel® Heô  adreó  wordô 
+    weeò berekenä aaî då hanä vaî då cursoò positie.
+
+
+    cursaddr:
+      inº  -
+      uitº HÌ ió vraí adres
+      wijzigtº BC,DE,F
+    Dezå  routinå  berekenô heô adreó iî då namentabeì vaî då vraí  aaî  då 
+    hanä vaî då huidigå cursoò positie.Š
+
+    antwoord:
+      inº  -
+      uitº Á ió antwoord
+      wijzigtº EI,F
+    Dezå routinå wachô oð eeî toetó druë eî converteerô då ingelezeî letteò 
+    naaò  eeî  hoofdletter®  Vervolgenó wordô dezå  waardå  vergelekeî  meô 
+    (antw_no)™ eî aló heô overeenkomô wordô eeî ° iî då Accõ teruçgegeven.
+    Aló heô geeî (antw_no)™ is¬ wordô då waardå vergelekeî meô (antw_yes)™ eî 
+    aló heô hiermeå overeenkomô wordô eò eeî ± iî då Accõ teruggegeven.
+    Iî allå anderå gevalleî wordô då routinå weeò opnieu÷ begonnen.
+    Vb:
+    calì printsð   » ziå printsp
+    dâ 'Arå yoõ surå (Y/N© ¿ ',0
+    calì antwoorä   » A=± º antwoorä waó Yes¬  A=° º antwoorä waó No
+    oò a
+    jp nz,he_is_sure
+
+
+    reportwd:
+
+
+    ;   ************************ 
+;	* Een aantal constantes
+
+com_reg:	equ #7ff8;	commando register
+track_reg:	equ #7ff9;	track register
+sector_reg:	equ #7ffa;	sector register
+data_reg:	equ #7ffb;	data register
+side_reg:	equ #7ffc;	side register
+systemy:	equ #f3dc;	rom bios Y coordinaat (lsb, msb is x-coord)
+Š;	***********************
+;	* De jump table
+
+ jp init_all;		drives en systeem variabelen selecteren/initialiseren
+ jp init_part;		drives resetten (met systeem variabelen)
+ jp restore_all;	originele staat herstellen
+ jp dubbel_enkel;	onderzoeken of een floppie dubbel/enkelzijdig is
+ jp trackup;		track := track+1,  sector := 1, controlle op maxtrack
+ jp logtrackup;		track/side+1, sector := 1, controlle op maxtrack
+ jp trackdown;		track := track-1, sector := 1, controlle op track 0
+ jp logtrackdown;	track/side-1, sector := 1, controlle op track 0
+ jp strch;		track := track+1, sector := 1
+ jp dtrch;		track/side+1, sector := 1
+ jp strdown;		track := track-1, sector := 1
+ jp dtrdown;		track/side-1, sector := 1
+ jp selecdra;		selecteer drive A fysiek
+ jp selecdrb;		selecteer drive B fysiek
+ jp drive_off;		zet drives uit
+ jp biterrprint;	print foutmeldingen
+ jp cursetwrt;		set vdp-write in namentabel, op systemy
+ jp cursetrd;		set vdp-read in namentabel, op systemy
+ jp cursaddr;		bereken positie in namen tabel, op systemy
+ jp antwoord;		wacht op antwoord (van toets bord)
+ jp reportwd;		print of wd 2793 wel of niet aanwezig is
+ jp printhl;		print data vanaf HL, afgesloten met 0-byte
+ jp printsp;		print data vanaf aanroep adres, afgesloten met 0-byte
+ jp sel_drivea;		selecteer drive A logisch
+ jp sel_driveb;		selecteer drive B logisch
+ jp step_in;		track := track+1
+ jp step_out;		track := track-1
+ jp seek_track;		track := Accu
+ jp res_drive;		track := 0
+ jp side0;		selecteer side 0
+ jp side1;		selecteer side 1
+ jp selec_sec;		sector := Accu
+ jp sec_vrm;		read sector naar vram
+ jp sec_ram;		read sector naar ram
+ jp adm_ram;		adres mark + status flag naar ram
+ jp trk_ram;		track naar ram
+ jp drv_vrm;		lees iets van drive naar vram (in A:wd2793 commando)
+ jp drv_ram;		lees iets van drive naar ram  (in A:wd2793 commando)
+ jp vrm_sec;		schrijf vram naar sector
+ jp ram_sec;		schrijf ram naar sector
+ jp ram_trk;		schrijf ram naar track
+ jp vrm_drv;		schrijf uit vram naar drive (in A:wd2793 commando)
+ jp ram_drv;		schrijf uit ram naar drive (in A:wd2793 commando)
+ jp set_command;	geef wd2793 een commando (in Accu)
+ jp exe_command;	wacht tot wd2793 klaar is met commando
+ jp wacht30ms;		wacht 30 mS (de head load time op 1 MHz)
+
+ defs 60,0;		eventuele uitbreiding jump table met maximaal 20
+; 			nieuwe bios routines
+
+;	***********************
+;	* De systeem variabelen
+
+kopa:		defs 1;		positie kop a     (0..79)
+kopb:		defs 1;		positie kop b     (0..79)
+seca:		defs 1;		positie sector a  (1..9)
+secb:		defs 1;		positie sector b  (1..9)
+sidea:		defs 1;		kant van drive a  (0..1)
+sideb:		defs 1;		kant van drive b  (0..1)
+
+lezen:		defs 1;		0=lezen       , 1=schrijven
+
+bdrive:		defs 1;		0=geen b-drive, 1=wel een b-drive
+singles:	defs 1;		0=dubbelzijdig, 1=enkelzijdig
+lastdrive:	defs 1;		0=A is actief,  1=B is actief
+
+fout:		defs 1;		0=wel wd2793,   1=geen wd2793
+
+save_fd9a:	defs 1;		kopie van (#fd9a)
+save_fd9f:	defs 1;		kopie van (#fd9f)
+
+maxtrack:	db 81;		maximum track nummer
+
+antw_yes:	db "Y";		standaard letter voor Ja (Yes)
+antw_no:	db "N";		standaard letter voor Nee (No)
+
+errtab1:	defw errtxt1;	pointer naar tabel type I foutmeldingen
+errtab2:	defw errtxt2;	pointer naar tabel type II foutmeldingen
+errtab3:	defw errtxt3;	pointer naar tabel type III foutmeldingen
+
+		defs 30,0;	ruimte voor nog 30 systeem variabelen
+
+;	***********************
+;	* de routines
+
+;	 ***********************
+
+init_all: xor a;	initialiseer drives, systeem variabelen, drives zijn hierna uit
+ ld (fout),a;		in:  -
+ ld a,(#fd9a);		uit: -
+ ld (save_fd9a),a;	wijzigt: HL,DE,BC,AF,DI, interrupt hooks, slots
+ ld a,(#fd9f);		 fout:	    0 = wel wd2793, 1 = geen wd2793
+ ld (save_fd9f),a;	 bdrive:    0=geen b-drive, 1=wel een b-drive
+ ld a,#c9;		 lastdrive:=0 (A-drive is actuele drive)
+ ld (#fd9a),a
+ ld (#fd9f),a
+
+ ld a,(#fb22)
+ ld h,#40
+ call #24;		drive controller inschakelen
+
+ call selecdra;		drive a selecteren
+ ld a,#d0
+ ld (com_reg),a
+ ex (sp),hl;		kill time
+ ex (sp),hl
+ ld b,0
+testwd2793a: ld a,(com_reg)
+ and 1
+ jp z,testwd2793b
+ call wacht30ms
+ djnz testwd2793a
+geenwd2793: ld a,1
+ ld (fout),a
+ ret
+
+testwd2793b: ld a,255
+ ld (track_reg),a;	zeggen dat kop op track 255 staat
+
+ ex (sp),hl
+ ex (sp),hl
+ ld a,(track_reg)
+ inc a
+ jr nz,geenwd2793;	er staat geen 255 (meer), dus geen wd2793
+
+ call res_drive
+
+ ld a,(track_reg)
+ or a
+ jr nz,geenwd2793;	kop is niet terug gezet dus geen wd2793
+ 
+ xor a
+ ld (kopa),a
+ ld (sidea),a
+ inc a
+ ld (seca),a
+
+ call selecdrb
+ jr nc,foundBdrive;	als drive aanwezig en floppie erin ==> z-flag KAN ook geset zijn
+ jr z,geenBdrive
+
+foundBdrive:
+ call res_drive
+ ld a,3
+ ld (#7ffd),a;		drives uit
+ ld a,1
+
+geenBdrive:
+ ld (bdrive),a;		0=geen b-drive, 1=wel een b-drive
+ xor a
+ ld (lastdrive),a;	zeggen dat A-drive laatst actief was
+ ld (kopb),a
+ ld (sideb),a
+ inc a
+ ld (secb),a
+ ret
+
+;	***********************
+
+init_part:;		reset de drive(s) en de drive systeem variabelen
+ call selecdra;		Hierna zijn de drives uit
+ call res_drive;	in:  -
+ xor a;			uit: -
+ ld (kopa),a;		wijzigt: AF,B
+ ld (kopb),a
+ ld (sidea),a
+ ld (sideb),a
+ inc a
+ ld (seca),a
+ ld (secb),a
+ ld a,(bdrive)
+ or a;			0=geen b-drive, 1=wel
+ push af
+ call nz,selecdrb
+ pop af
+ call nz,res_drive
+ ld a,3
+ ld (#7ffd),a
+ xor a
+ ld (lastdrive),a
+ ret
+
+;	***********************
+
+restore_all:;		herstel de beginsituatie
+ call selecdra;		in:  -
+ call res_drive;	uit: -
+ call selecdrb;		wijzigt: AF,HL,BC,DE,DI, slots, interrupt hooks
+ call res_drive;	De slots en int-hooks worden weer gezet zoals ze
+ ld a,3;		standaard onder BASIC staan
+ ld (#7ffd),a;		drives uit
+
+ ld a,(#fcc1)
+ ld h,#40
+ call #24
+ ld a,(save_fd9f)
+ ld (#fd9f),a
+ ld a,(save_fd9a)
+ ld (#fd9a),a
+ ret
+
+;	***********************
+
+dubbel_enkel:;		controleren of de floppie enkel/dubbelzijdig is
+ xor a;			in:  -
+ ld (singles),a;	uit: A=0 => dubbel zijdig, A=1 => enkel zijdig
+ call dubbel_e1;		    dit komt tevens in (singles) te staan
+ ld a,#d0;		wijzigt: F,B,DI
+ ld (com_reg),a;  	drive controller resetten anders gaat lezen de eerste maal mis
+ call wacht30ms
+ ld a,(data_reg)
+ ld a,(com_reg);	eventuele foute data en interrupts weglezen
+ call res_drive
+ xor a
+ ld (side_reg),a;	side 0 selecteren
+ ld a,1
+ ld (sector_reg),a;	sector 1 selecteren
+ ld a,(singles)
+ ret
+
+dubbel_e1:
+ di
+ xor a
+ ld (singles),a
+ call side1
+ ld b,79;		79 tracks (1 tm 79, hij hoeft niet op 0 te worden gezet)
+dubbel_e2: 
+ ld a,%1011100;		step in met track update,head load,verify
+ call set_command;	sector lezen
+dubbel_e3: ld a,(com_reg)  
+ bit 0,a
+ jr nz,dubbel_e3
+ bit 4,a
+ jr nz,dubbel_e4;	track not found
+ bit 3,a
+ jr nz,dubbel_e4;	crc-error
+dubbel_e3a: djnz dubbel_e2
+ xor a
+ ld (singles),a;	als singles < 2 was is er maar 1 track kapot, dit is niet
+ ret;			interresant genoeg
+dubbel_e4: ld a,(singles)
+ inc a
+ ld (singles),a
+ cp 2
+ jr nz,dubbel_e3a
+ ret
+
+;	***********************
+
+trackup:;		ga naar volgend track, tot drive niet verder kan,
+ ld a,(track_reg);	of tot (maxtrack)
+ ld hl,maxtrack;	in:  -
+ cp (hl);		uit: -
+ ret nc;		wijzigt: AF,HL,AF'
+ jr strch
+
+;	***********************
+
+logtrackup:;		ga naar volgend logisch track
+ ld a,(track_reg);	==> of van side 0 naar side 1, of trackup en
+ ld hl,maxtrack;	van side 1 naar side 0
+ cp (hl);		weer met controlle op maxtrack
+ jr c,dtrch;		in:  -
+ ld a,(side_reg);	uit: -
+ or a;		wijzigt: AF,HL,AF'
+ ret nz
+ jr dtrch
+
+;	***********************
+
+trackdown:;		ga track omlaag, tot track 0
+ ld a,(track_reg);	in:  -
+ or a;			uit: -
+ ret z;			wijzigt: AF,AF'
+ jr strdown
+
+;	***********************
+
+logtrackdown:;		ga logisch track omlaag
+ ld a,(track_reg);	==> of van side 1 naar side 0
+ or a;			of track down en van side 0 naar side 1
+ jr nz,dtrdown;		in:  -
+ ld a,(side_reg);	uit: -
+ or a;			wijzigt: AF,AF'
+ ret z
+ jr dtrdown
+
+;	***********************
+
+strch:;			track verhogen (enkelzijdig), zonder kontrole op te hoog track nummer
+ ld a,1;		in:  -
+ ld (sector_reg),a;	uit: -
+ jp step_in;		wijzigt: AF,AF'
+
+;	***********************
+
+dtrch:
+ ld a,1;		logisch track verhogen bij dubbelzijdig, zonder kontrole op te hoog track nummer
+ ld (sector_reg),a;	in:  -
+ ld a,(side_reg);	uit: -
+ and 1;			wijzigt: AF,AF'
+ xor 1
+ ld (side_reg),a
+ ret nz;		net kant 1 geselecteerd
+ jp step_in
+
+;	***********************
+
+strdown:;		track verlagen bij single side, geen controlle op te laag nummer
+ ld a,1;		in:  -
+ ld (sector_reg),a;	uit: -
+ jp step_out;		wijzigt: AF,AF'
+
+;	***********************
+
+dtrdown:;		logisch track verlagen bij dubbelzijdig, zonder kontrole op te laag track nummer
+ ld a,1;		in:  -
+ ld (sector_reg),a;	uit: -
+ ld a,(side_reg);	wijzigt: AF,AF'
+ and 1
+ xor 1
+ ld (side_reg),a
+ ret z;			net kant 0 geselecteerd
+ jp step_out
+
+;	***********************
+
+selecdra:;		drive a selecteren en wachten tot drive electronica
+ ld a,%11000100;	volledig is geinitialiseerd
+ ld (#7ffd),a;		in:  -
+ call wacht30ms;	uit: C als drive niet klaar is, NC als drive wel klaar
+ call wacht30ms;	wijzigt: AF,B
+ ld a,#d0
+ ld (com_reg),a;	drive commando resetten
+ call wacht30ms
+ ld b,#20
+selecda2: ld a,(com_reg)
+ rla
+ ret nc
+ call wacht30ms
+ djnz selecda2
+ scf
+ ret
+
+;	***********************
+
+selecdrb:;		drive b selecteren en wachten op drive electronica
+ ld a,%11000101;	c-flag is geset als drive niet klaar is, z-flag is geset
+ ld (#7ffd),a;		als de drive niet aanwezig is
+ call wacht30ms;	in:  -
+ call wacht30ms;	uit: C,Z  => drive niet aanwezig (en A=0)
+ ld a,#d0;		     C,NZ => drive aanwezig, echter niet klaar
+ ld (com_reg),a;	     NC   => alles goed
+ call wacht30ms;	wijzigt: AF,B
+ ld b,#20
+selecdb2: ld a,(com_reg)
+ rlca
+ ret nc
+ cp 1;			128 (drive not ready, rest alles goed) geroteerd naar 1
+ ld a,0;		nu hoeft de drive detect routine niet meer de Accu 0 te maken 
+ scf
+ ret z
+ call wacht30ms
+ djnz selecdb2
+ ld a,1
+ or a
+ scf
+ ret
+
+;	***********************
+
+drive_off:;		zet drive uit
+ push af;		in:  -
+ ld a,3;		uit: -
+ ld (#7ffd),a;		wijzigt: -
+ pop af
+ ret
+
+;	***********************
+
+biterrprint:;		print de goede foutmeldingen
+ or a;			in: HL wijst naar het begin van een tabel met 8 text pointers
+ ret z;			    A-bits geven aan welke teksten moeten worden geprint
+   ;			    bit 7 = 1  ==> print text 0
+ ld b,8;		    bit 6 = 1  ==> print text 1
+biterrp2:;		     |  | | |   |    |    |   |
+ push hl;		    bit 0 = 1  ==> print text 7
+ ld c,(hl);		uit: -
+ inc hl;		wijzigt: AF,HL,BC,EI
+ ld h,(hl);		Deze routine reset tevens de drive controller, zodat nieuwe commando's goed gaan
+ ld l,c;		hl wijst nu naar err_txt
+ rlca
+ push af
+ call c,printhl;	tekst uitprinten als bitje geset was
+ pop af
+ pop hl
+ inc hl
+ inc hl
+ djnz biterrp2
+
+ ld a,#d0
+ ld (com_reg),a;	drive command resetten om foutvlaggen te resetten
+ ex (sp),hl
+ ex (sp),hl
+ ex (sp),hl
+ ex (sp),hl
+ ld a,(data_reg);	eventueel foute data weglezen
+ ld a,(com_reg);	eventueel fout interrupt flags etcetera weglezen
+ ret
+
+;	***********************
+
+cursetwrt: push bc;	set vdp op schrijven naar namentabel, vanaf huidige
+ push de;		cursor positie
+ call cursaddr;		in:  -
+ call #171;		uit: -
+ di;			wijzigt: HL,AF,DI
+ pop de;		Ps. Dit gaat alleen goed in 80-koloms mode, waarbij
+ pop bc;		de namentabel op adres 0 begint (standaard screen 0, width 80 situatie)
+ ret
+
+;	***********************
+
+cursetrd: push bc;	set vdp op lezen uit namentabel, vanaf huidige
+ push de;		cursor positie
+ call cursaddr;		in:  -
+ call #16e;		uit: -
+ di;			wijzigt: HL,AF,DI
+ pop de;		Ps. Dit gaat alleen goed in 80-koloms mode, waarbij
+ pop bc;		de namentabel op adres 0 begint (standaard screen 0, width 80 situatie)
+ ret
+
+;	***********************
+
+cursaddr:;		bereken adres in namentabel, voor huidige cursor positie
+ ld hl,(systemy);	in:  -
+   ;			uit: HL is vram adres
+   ;			wijzigt: BC,DE,F
+   ;			Ps: dit gaat alleen goed op screen 0, width 80,
+   ;			namentabel startadres = 0
+ ld c,h;		h=x  => c=x
+ ld h,0
+ ld b,h;		b=0, h=0, l=y, c=x
+ dec l
+ dec c;			conversie van (1,1) naar (0,0)
+ add hl,hl
+ add hl,hl
+ add hl,hl
+ add hl,hl;  *16
+ ld e,l
+ ld d,h
+ add hl,hl
+ add hl,hl;  *64
+ add hl,de;  hl = y * 80
+ add hl,bc;  hl = y * 80 + x
+ ret
+
+;	***********************
+
+antwoord:;		wacht op toets en kijk of het een antw_yes of antw_no is, echo antw op scherm
+ push hl;		in:  -
+antw2: call #9f;	uit: A=0 ==> antw_no, A=1 ==> antw_yes
+   ;			wijzigt: EI,F
+ res 5,a;		kleine letters => grote letters
+ ld hl,antw_yes
+ cp (hl)
+ jr z,antwj
+ inc hl
+ cp (hl)
+ jr z,antwn
+ jr antwoord
+antwn: call #a2
+ xor a
+ pop hl
+ ret
+antwj: call #a2
+ ld a,1
+ pop hl
+ ret
+
+;	***********************
+
+reportwd:;		print de tekst waar HL of DE naar wijst aan de hand
+ ld a,(fout);		van de inhoud van fout
+ or a;			fout=0 => print hl (in dit geval is er wel een wd2793)
+ jr z,$+3;		fout=1 => print de (in dat geval is er geen wd2793)
+ ex de,hl;		in: HL : tekst die hoort bij wel een wd2793
+ jp printhl;		    DE : tekst die hoort bij geen wd2793
+  ;			uit: -
+  ;			wijzigt: AF,HL,EI ( en DE als geen wd2793 aanwezig is) 
+
+;	***********************
+
+printhl:;		print tekst waar hl naar wijst, als hl=0 dan print niks
+ ld a,h;		De tekst moet worden afgesloten met een 0-byte
+ or l;			in:  HL = tekstpointer
+ ret z;			uit: -
+printhl2: ld a,(hl);	wijzigt: AF,HL,EI
+ call #a2
+ inc hl
+ or a
+ jr nz,printhl2
+ ret
+
+;	***********************
+
+printsp:;		print tekst die na de aanroep van printsp staat, ze moet worden afgesloten met een 0-byte
+ ex (sp),hl;		in:  -
+ call printhl;		uit: -
+ ex (sp),hl;		wijzigt: AF,EI,(SP) ( (sp) <== eerste adres na 0-byte)
+ ret
+
+;	***********************
+
+sel_drivea:;		selecteer drive A
+ ld a,(lastdrive);	Als 2 drives, dan fysiek selecteren
+ or a;			Als 1 drive, dan tekst in HL afdrukken en op toets wachten
+ jp z,sel_daeind;	             er wordt voor de veiligheid een kill key buf aangeroepen
+ ld a,(bdrive);		Deze routine alleen gebruiken als de (logische) b-drive het laatst
+ or a;			actief was (Bij 1-drive systeem moet de drive aanstaan)
+ jr z,sel_dawissel;	in:  HL pointer naar tekst die moet worden afgedrukt
+ di;			     bij 1-drive systeem
+ ld a,(track_reg);	uit: C als drive niet klaar is, NC als drive wel klaar
+ ld (kopb),a;		wijzigt: A,B,HL,DI,AF'
+ ld a,(sector_reg)
+ ld (secb),a
+ ld a,(side_reg)
+ ld (sideb),a
+
+ ld a,(kopa)
+ ld (track_reg),a
+ ld a,(seca)
+ ld (sector_reg),a
+ ld a,(sidea)
+ ld (side_reg),a
+
+ xor a
+ ld (lastdrive),a
+ jp selecdra
+
+sel_dawissel:
+ call printhl
+ call #156;		kill keybuff
+ call #9f
+ di
+ call selecdra;		drive aanzetten als hij uit stond
+ ld a,(track_reg)
+ ld (kopb),a
+ ld a,(sector_reg)
+ ld (secb),a
+ ld a,(side_reg)
+ ld (sideb),a
+
+ call exe_command
+
+ ld a,(kopa)
+ ld (data_reg),a
+ ld a,%11000
+ call set_command;	kop op de oude positie zetten
+ call exe_command
+ ld a,(seca)
+ ld (sector_reg),a
+ ld a,(sidea)
+ ld (side_reg),a
+
+ xor a
+ ld (lastdrive),a
+ ld a,#d0
+ ld (com_reg),a;	drive commando resetten
+ call wacht30ms
+ ld a,(com_reg)
+ rla;			drive not ready ==> C-flag
+ ret
+
+sel_daeind: di
+ xor a
+ ld (lastdrive),a
+ jp selecdra
+
+;	***********************
+
+sel_driveb:;		selecteer drive B
+ ld a,(lastdrive);	Als 2 drives, dan fysiek selecteren
+ or a;			Als 1 drive, dan tekst in HL afdrukken en op toets wachten
+ jp nz,sel_dbeind;	             er wordt voor de veiligheid een kill key buf aangeroepen
+ ld a,(bdrive);		Deze routine alleen gebruiken als de (logische) a-drive het laatst
+ or a;			actief was (Bij 1-drive systeem moet de drive aanstaan)
+ jp z,sel_dbwissel;	in:  HL pointer naar tekst die moet worden afgedrukt
+ di;			     bij 1-drive systeem
+ ld a,(track_reg);	uit: C als drive niet klaar is, NC als drive wel klaar
+ ld (kopa),a;		wijzigt: A,B,HL,DI,AF'
+ ld a,(sector_reg)
+ ld (seca),a
+ ld a,(side_reg)
+ ld (sidea),a
+
+ ld a,(kopb)
+ ld (track_reg),a
+ ld a,(secb)
+ ld (sector_reg),a
+ ld a,(sideb)
+ ld (side_reg),a
+
+ ld a,1
+ ld (lastdrive),a
+ jp selecdrb
+
+sel_dbwissel:
+ call printhl
+ call #156
+ call #9f 
+ di
+ call selecdra;		aanzetten als hij uit stond
+ ld a,(track_reg)
+ ld (kopa),a
+ ld a,(sector_reg)
+ ld (seca),a
+ ld a,(side_reg)
+ ld (sidea),a
+ call exe_command
+ ld a,(kopb)
+ ld (data_reg),a
+ ld a,%11000
+ call set_command;	kop op de oude positie zetten
+ call exe_command
+ ld a,(secb)
+ ld (sector_reg),a
+ ld a,(sideb)
+ ld (side_reg),a
+ ld a,1
+ ld (lastdrive),a
+ ld a,#d0
+ ld (com_reg),a
+ call wacht30ms
+ ld a,(com_reg)
+ rla
+ ret
+
+sel_dbeind: di
+ ld a,1
+ ld (lastdrive),a
+ ld a,(bdrive)
+ or a
+ jr z,$+5
+ jp selecdrb
+ jp selecdra
+
+;	***********************
+
+step_in:;		voer step in commando uit ==> kop naar volgend track
+ ld a,%01011000;	in:  -
+ call set_command;	uit: -
+ jp exe_command;	wijzigt: AF,AF'
+
+;	***********************
+
+step_out:;		voer step out commando uit ==> kop track terug
+ ld a,%01111000;	in:  -
+ call set_command;	uit: -
+ jp exe_command;	wijzigt: AF,AF'
+
+;	***********************
+
+seek_track:;		Ga naar het track toe
+ push af;		in:  A = track nummer
+ call exe_command;	uit: -
+ pop af;		wijzigt: AF,AF'
+ ld (data_reg),a
+ ld a,%11000
+ call set_command
+ jp exe_command
+
+;	***********************
+
+res_drive:;		reset de actieve drive (==> kop naar track 0)
+ ld b,1;		in:  -
+res_drive2: ld a,8;	uit: -
+ ld (com_reg),a;	wijzigt: AF,B
+ call wacht30ms
+ ld a,(#7fff)
+ bit 6,a
+ ret z
+ call exe_command
+ djnz res_drive2;	na 1 keer exe moet de kop goed staan, zoniet, dan heb je
+ ret;			geen WD2793 en zal hij ook nooit goed komen te staan
+  ;			de hoofdroutine ziet dan vanzelf dat de drive niet
+  ;			gereset is aan het track nummer 
+
+;	***********************
+
+side0:;			selecteer side 0
+ ld hl,side_reg;	in:  -
+ res 0,(hl);		uit: -
+ ret;			wijzigt: HL
+
+;	***********************
+
+side1:;			selecteer side 1
+ ld hl,side_reg;	in:  -
+ set 0,(hl);		uit: -
+ ret;			wijzigt: HL
+
+;	***********************
+
+selec_sec:;		selecteer sector
+ ld (sector_reg),a;	in:  A=sector
+ ret;			uit: -
+  ;			wijzigt: -
+
+;	***********************
+
+sec_vrm:;		lees een sector naar vram
+ ld a,128;		in: VDP op goede adres, C pointer naar vdp i/o poort
+ ld de,1025;		uit: DE=1025 - aantal gelezen bytes
+ jp drv_vrm;		     A=0 ==> geen fouten
+  ;			     A<>0: bits zijn van type 2 status
+  ;			wijzigt: HL,AF',DI
+
+;	***********************
+
+sec_ram:;		lees sector naar ram
+ ld a,128;		in: DE is ram adres 
+ ld bc,1025;		uit: BC=1025 - aantal gelezen bytes
+ jp drv_ram;		     DE=DE+aantal gelezen bytes
+  ;			     A=0 ==> geen fouten
+  ;			     A<>0: bits zijn van type 2 status
+  ;			wijzigt: HL,AF',DI
+
+;	***********************
+
+adm_ram:;		lees adres marker naar ram, achter adm komt nog status byte
+ ld a,%11000000;	in: DE op ram-adres
+ ld bc,8;		uit:	BC=8 - aantal gelezen bytes
+ call drv_ram;		DE=DE+aantal gelezen bytes+1 (normaal : DE=DE+7)
+ ld (de),a;		A=0 ==> geen fouten
+ inc de;		A<>0: type 2
+ ret;			wijzigt: HL,AF',DI
+
+;	***********************
+
+trk_ram:;		track naar ram
+ ld a,%11100000;	in: DE op source adres
+ ld bc,#1a00;		uit:	BC=#1A00 - aantal gelezen bytes
+ jp drv_ram;		DE=DE+aantal gelezen bytes
+  ;			A: type 2 status (0 => geen fouten)
+  ;			wijzigt: HL,AF',DI
+
+;	***********************
+
+drv_vrm:;		drive ==> vram
+ di;			in	 : A = drive commando, C = vdp i/o poort, DE = maximum aantal bytes
+ call drv_v2;		uit    : A = status byte, DE=DE-aantal gelezen bytes
+ ld a,(com_reg);	wijzigt: HL, AF',DI
+ ret
+
+drv_v2:
+ push de
+ ld de,0
+ ld hl,#7fff
+ call set_command
+drv_v3: ld a,(hl)
+ add a,a
+ jp nc,drv_v5;		drive ready ==> byte is ingelezen  (bit 7 => not DRQ)
+ jp p,drv_v4;		commando ready ==> helemaal klaar  (bit 6 => not IRQ)
+ dec e
+ jp nz,drv_v3
+ ld a,(hl)
+ add a,a
+ jp nc,drv_v5
+ jp p,drv_v4
+ dec d
+ jp nz,drv_v3
+drv_v4: pop de
+ ret
+
+drv_v5: ld a,(data_reg)
+ out (c),a
+ pop de
+ dec de
+drv_v6: ld a,(hl)
+ add a,a
+ jp nc,drv_v7
+ jp m,drv_v6
+ ret
+drv_v7: ld a,(data_reg)
+ out (c),a
+ dec de
+ ld a,d
+ or e
+ jp nz,drv_v6
+ ret
+
+;	***********************
+
+drv_ram:;		drive ==> ram
+ di;			in	 : A = drive commando, DE = beginadres, BC = maximum aantal bytes
+ call drv_r2;		uit    : A = status byte, DE = adres na laatst gelezen byte, BC=BC-aantal gelezen bytes
+ ld a,(com_reg);	wijzigt: HL, AF',DI
+ ret
+
+drv_r2:
+ push bc
+ ld bc,0;		i.v.m disk offline, als de disk pas wordt uitgeworpen na set_command
+  ;			maar voor de passage van de AM, dan interrupt de controller
+  ;			niet uit
+ ld hl,#7fff
+ call set_command
+drv_r3: ld a,(hl)
+ add a,a
+ jp nc,drv_r5;		drive ready ==> byte is ingelezen  (bit 7 => not DRQ)
+ jp p,drv_r4;		commando ready ==> helemaal klaar  (bit 6 => not IRQ)
+ dec c
+ jp nz,drv_r3
+ ld a,(hl)
+ add a,a
+ jp nc,drv_r5
+ jp p,drv_r4
+ dec b
+ jp nz,drv_r3
+drv_r4: pop bc;		aantal te lezen bytes is nu niet veranderd
+ ret
+
+drv_r5: ld a,(data_reg)
+ ld (de),a
+ inc de
+ pop bc;		# bytes
+ dec bc
+drv_r6: ld a,(hl);	hoofd lees lus
+ add a,a
+ jp nc,drv_r7
+ ret p
+ jp drv_r6
+drv_r7: ld a,(data_reg)
+ ld (de),a
+ inc de
+ dec bc
+ ld a,b
+ or c
+ jp nz,drv_r6
+ ret;			BC bytes ingelezen ==> ook klaar (dit i.v.m. disk offline
+  ;			tijdens track read, de drive controller interrupt dan vaak
+  ;			te laat uit (pas na nog een volledig rondje of zo)
+
+;	***********************
+
+vrm_sec:;		schrijf sector uit vram
+ ld a,128+32;		in: VDP op goede adres, C pointer naar vdp i/o poort
+ ld de,1025;		uit: DE=1025 - aantal geschreven bytes
+ jp vrm_drv;		     A=0 ==> geen fouten
+  ;			     A<>0: bits zijn van type 2 status
+  ;			wijzigt: HL,AF',DI
+
+;	***********************
+
+ram_sec:;		schrijf sector uit ram
+ ld a,128+32;		in: DE moet op source adres staan
+ ld bc,1025;		uit: BC=1025 - aantal geschreven bytes
+ jp ram_drv;		     DE=DE + aantal geschreven bytes
+  ;			     A=0 ==> geen fouten
+  ;			     A<>0: bits van type 2
+  ;			wijzigt: HL,AF',DI
+
+;	***********************
+
+ram_trk:;		schrijf track vanuit ram naar drive
+ ld a,%11110000;	in: DE is adres
+ ld bc,#1a00;		uit:	BC=#1A00 - aantal bytes
+ jp ram_drv;			DE=DE + aantal bytes
+  ;				A = type 2
+  ;			wijzigt: HL,AF',DI
+
+;	***********************
+
+vrm_drv: call vrm_d2;	vram naar drive
+ ld a,(com_reg);	in: A=drive commando, VDP op goede adres
+ ret;			    C naar vdp i/o port, DE maximum aantal bytes
+  ;			uit: DE=DE - aantal geschreven bytes
+vrm_d2: di;		     A=0 ==> geen fouten
+ ld hl,#7fff;		     A<>0: bits zijn van type 2 status
+ call set_command;	wijzigt: HL,AF',DI
+ push de
+ ld de,0
+vrm_d3: ld a,(hl)
+ add a,a
+ jp nc,vrm_d5
+ jp p,vrm_d4
+ dec e
+ jp nz,vrm_d3
+ ld a,(hl)
+ add a,a
+ jp nc,vrm_d5
+ jp p,vrm_d4
+ dec d
+ jp nz,vrm_d3
+vrm_d4: pop de
+ ret
+ 
+vrm_d5: in a,(c)
+ ld (data_reg),a
+ pop de
+ dec de
+vrm_d6: ld a,(hl)
+ add a,a
+ jp nc,vrm_d7
+ jp m,vrm_d6
+ ret
+vrm_d7: in a,(c) 
+ ld (data_reg),a
+ dec de
+ ld a,d
+ or e
+ jp nz,vrm_d6
+ ret
+
+;	***********************
+
+ram_drv: call ram_d2;	ram naar drive
+ ld a,(com_reg);	in: A=drive commando, DE is source adres
+ ret;			    BC maximum aantal bytes
+  ;			uit: BC=BC - aantal geschreven bytes
+ram_d2: di;		     DE=DE + aantal geschreven bytes
+ ld hl,#7fff;		     A=0 ==> geen fouten
+ call set_command;	     A<>0: bits zijn van type 2 status
+ push bc;		wijzigt: HL,AF,AF',DI
+ ld bc,0
+ram_d3: ld a,(hl)
+ add a,a
+ jp nc,ram_d5
+ jp p,ram_d4
+ dec c
+ jp nz,ram_d3
+ ld a,(hl)
+ add a,a
+ jp nc,ram_d5
+ jp p,ram_d4
+ dec b
+ jp nz,ram_d3
+ram_d4: pop bc
+ ret
+ 
+ram_d5: ld a,(de)
+ ld (data_reg),a
+ inc de
+ pop bc
+ dec bc
+ram_d6: ld a,(hl)
+ add a,a
+ jp nc,ram_d7
+ jp m,ram_d6
+ ret
+ram_d7: ld a,(de)
+ ld (data_reg),a
+ inc de
+ dec bc
+ ld a,b
+ or c
+ jp nz,ram_d6
+ ret
+
+;	***********************
+
+set_command:;		drive commando instellen, eerst wachten op eventueel vorig commando
+ ex af,af';		in:  A=drive commando
+ call exe_command;	uit: -
+ ex af,af';		wijzigt: AF'
+ ld (com_reg),a
+ ex (sp),hl
+ ex (sp),hl
+ ret
+
+;	***********************
+
+exe_command:;		type I commando 'uitvoeren', dus wachten tot drive controller klaar is
+ ld a,(com_reg);	in:  -
+ bit 0,a;		uit: -
+ jr nz,exe_command;	wijzigt: AF
+ ret
+
+;	***********************
+
+wacht30ms:;		30 ms wachten i.v.m. head load time
+ push hl;		in:  -
+ ld hl,#117b;		uit: -
+wachtl2: dec hl;	wijzigt: AF
+ ld a,h
+ or l
+ jr nz,wachtl2
+ pop hl
+ ret
+
+;	***********************
+
+errtxt1:;		pointers naar standaard standaard drive foutmeldingen
+ defw errbit7;		in juiste formaat voor biterrprint
+ defw errbit6;		Deze tabel hoort bij type I commando's
+ defw errbit51
+ defw errbit41
+ defw errbit3
+ defw errbit21
+ defw errbit11
+ defw errbit0
+
+errtxt2:;		pointer tabel voor foutmeldingen bij type II commando's
+ defw errbit7
+ defw errbit6
+ defw errbit52
+ defw errbit42
+ defw errbit3
+ defw errbit22
+ defw errbit12
+ defw errbit0
+
+errtxt3:;		pointer tabel voor foutmeldingen bij type III commando's
+ defw errbit7
+ defw errbit6
+ defw errbit52
+ defw errbit42
+ defw errbit3
+ defw errbit22
+ defw errbit12
+ defw errbit0
+
+;	***********************
+;	* De standaard foutmeldingen
+
+errbit7:	db "Drive not ready  ",0
+errbit6:	db "Write protect    ",0
+errbit51:	db "Head loaded      ",0
+errbit52:	db "Deleted data mark",0
+errbit41:	db "Seek error       ",0
+errbit42:	db "Record not found ",0
+errbit3:	db "Crc error        ",0
+errbit21:	db "Track 0          ",0
+errbit22:	db "Lost data        ",0
+errbit11:	db "Index pulse      ",0
+errbit12:	db "Data request     ",0
+errbit0:	db "Busy             ",0
+

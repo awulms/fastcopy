@@ -1,0 +1,1830 @@
+extbio:	equ	#ffca;       extended bios, voor memory manager
+systemy: equ	#f3dc;       systeem y,systeem x
+
+memman: macro @nummer;       macro  om memory manager aan te roepen
+	ld	de,256*"M" .or. @nummer
+	call	extbio
+endm
+
+locate:	macro	@x,@y
+	db	27,'Y',31+@y,31+@x
+	endm
+
+	defb	#fe
+	defw	begin
+	defw	eind-1
+	defw	begin
+
+	org	#c000-#510;  lengte van eerste deel (tot #c000 grens)
+
+begin:	jp	begin2;      initialisatie routine moet boven #c000 staan, i.v.m. goed afsluiten
+
+iniscr:	ld	hl,#f3e9
+	push	hl
+	ld	de,savcol
+	ld	bc,3
+	ldir
+	pop	hl
+	ld	(hl),1
+	inc	hl
+	ld	(hl),2
+	inc	hl
+	ld	(hl),2		; color 1,2,2
+	ld	a,80
+	ld	(#f3ae),a;   width 80
+	ld	hl,#f3b1
+	ld	a,(hl)
+	ld	(savlines),a
+	ld	(hl),27		; 27 lijnen
+	xor	a
+	ld	(#f3db),a;   click off
+	ld	(#f3de),a;   key off
+	call	#5f		; screen 0
+
+	call	#41
+	ld	a,27
+	ld	(#f3b1),a
+
+	ld	hl,24*80
+	ld	bc,3*80
+	ld	a," "
+	call	#56		; onderste 3 lijnen wissen
+
+	ld	a,(#ffdf+9)
+	set	7,a
+	ld	c,9
+	ld	b,a
+	call	#47		; 27 regels instellen
+
+	ld	b,#34		; kleur 3,4 als alternatieve kleur
+	ld	c,#c
+	call	#47
+
+	ld	b,#10
+	ld	c,#d
+	call	#47		; alternatieve kleur continu aan
+
+	ld	a,(7)
+	inc	a
+	ld	c,a
+	di
+	ld	a,1
+	out	(c),a
+	ld	a,#90
+	out	(c),a		; palet register 1 instellen
+	ld	hl,upalet
+	inc	c
+	ld	b,10
+	otir
+
+	ld	b,#2f
+	ld	c,3
+	call	#47		; alt. kleur video addr. op #a00 zetten
+
+	ld	hl,#a00
+	ld	bc,27*10
+	xor	a
+	call	#56		; alt. kleur wissen
+
+	jp	#44
+
+
+upalet:	db	#55,5
+	db	#33,3
+	db	#00,6
+	db	#00,3
+	db	#51,2		; rood, wordt in fastc niet gebruikt, hoort
+				; echter bij utility standaard kleuren
+
+
+inv_ram:
+;  3-tal invul functies die maar 1 maal worden aangeroepen
+	call	inv_r1;      mapper onderzoeken ==> boven #c000
+	xor	a
+	ld	(nrfsegs),a
+	ld	hl,fsegstab; hl ==> positie in fseg numbers table
+inv_r2: ld	a,(nrfsegs); aantal segmenten
+	push	hl
+	cp	47;          47 segmenten ==> 752Kbytes ==> ruim zat voor dd flop met autoformat (720+7)
+	jr	z,inv_r3;    al 47 segmenten aangevraagd ==> op (samen met eerste 3 mapper)
+	ld	b,3
+	memman	10;          allocate fsegment
+	ld	a,h
+	or	l
+	jr	z,inv_r3;    geen gekregen ==> op
+	ex	de,hl;       de = segment ID
+	pop	hl
+	ld	(hl),e
+	inc	hl
+	ld	(hl),d;      segment nummer opslaan in table
+	inc	hl
+	ld	a,(nrfsegs)
+	inc	a
+	ld	(nrfsegs),a; weer een segment gealloceerd
+	jr	inv_r2
+inv_r3: pop	hl;          stack herstellen
+	ld	hl,#1106
+	ld	(systemy),hl
+	ld	a,(nrfsegs)
+	ld	b,a
+	ld	a,(mapaantal)
+	add	a,b
+	inc	a;           ook blok 0 wordt niet meegeteld
+	ld	l,a
+	ld	h,0;         HL=aantal blokken, 1 blok = 16K
+	add	hl,hl
+	add	hl,hl
+	add	hl,hl
+	add	hl,hl;       hl=hl*16 ==> hl is # maal 1K
+	jp	int_str
+
+inv_vram:
+	ld	a,(7)
+	inc	a
+	ld	c,a
+	di;                  hoeveelheid vram checken
+
+	ld	b,7
+	ld	a,1;         eerst gewoon vram onderzoeken
+	call	inv_vcount;  count aantal blocks
+	ld	(norm_vrm),a; hoeveelheid normaal vram  (aantal blokken van 16K)
+
+	ld	a,%01000000; set MXC to 1 ==> expanded vram
+	call	set_MXC
+
+	ld	b,3
+	ld	a,1
+	call	inv_vcount
+	ld	(ext_vrm),a
+	xor	a
+	call	set_MXC
+
+	ld	hl,#1107
+	ld	(systemy),hl
+	ld	a,(norm_vrm)
+	ld	b,a
+	ld	a,(ext_vrm)
+	add	a,b
+	ld	l,a
+	ld	h,0
+	add	hl,hl
+	add	hl,hl
+	add	hl,hl
+	add	hl,hl; *16
+	jp	int_str
+
+inv_vcount:
+	push	af
+	out	(c),a
+	ld	a,#8e
+	out	(c),a;       stel blok in
+	call	vpokevpeek;  doe vpoke,vpeek, cmp, ret nz, inc, nog eens
+	jr	nz,inv_vc2;  hoogste blok gehad
+	pop	af
+	inc	a
+	djnz	inv_vcount
+	ret
+inv_vc2: pop	af
+	dec	a;           het was 1 blok teveel, want dit blok was 'zwevend'
+	ret
+
+vpokevpeek:
+	xor	a
+	out	(c),a
+	ld	d,%01000000
+	out	(c),d;       adres 0 binnen huidige blok
+	dec	c
+	ld	l,10
+	out	(c),l;       schrijf 10 naar addr 0
+
+	inc c
+	out	(c),a
+	or	a
+	or	a
+	out	(c),a
+	dec	c
+	or	a;           timing
+	in	a,(c);       lees addr 0
+	inc	c
+	cp	l
+	ret	nz;          geen 10 ==> geen vram
+	
+	ld	a,1
+	out	(c),a
+	or	a
+	out	(c),d;       adres 1
+	dec	c
+	ld	l,10 .xor. 255
+	out	(c),l;       schrijf 10 .xor. 255 naar addr 0
+	
+	inc	c
+	out	(c),a
+	dec	a
+	out	(c),a
+	dec	c
+	or	a
+	in	a,(c)
+	inc	c
+	cp	l
+	ret
+
+inv_drnrs:
+	ld	hl,#1508
+	ld	(systemy),hl
+	ld	a,(bdrive);  0=geen b-drive, 1=wel b-drive
+	add	a,"1"
+	jp	#a2
+
+begin3:	ld	a,10
+	memman	30
+	cp	10+"M"
+	jr	nz,nomemman
+	memman	30
+	cp	10+"M"+"M"
+	jp	z,foundmemman
+nomemman:
+	call	printsp
+	db	"Installing MST's memory manager now",13,10
+	db	"Please be patient",13,10,0
+	di
+	ld	hl,#fbf0
+	ld	(#f3fa),hl;  toets buffer begin zetten
+	ld	de,bloadtxt
+	ex	de,hl
+	ld	bc,bloadtxteind-bloadtxt
+	ldir
+	ld	(#f3f8),de;  toets buffer eind instellen
+	ret;                 memmory manager wordt nu ingeladen
+
+foundmemman:
+	call	iniscr
+	ld	b,2
+	memman	50;          get fast use addr 2
+	ld	(use2+1),hl
+
+	ld	a,(7)
+	ld	c,a
+	call printsp
+	locate	30,1
+	db	1,#58, 1,#57, 1,#57, 1,#57, 1,#57, 1,#57
+	db	1,#57, 1,#57, 1,#57, 1,#57, 1,#57
+	db	1,#57, 1,#57, 1,#57, 1,#57, 1,#57
+	db	1,#57, 1,#57, 1,#57, 1,#57, 1,#57, 1,#59
+	locate	30,2
+	db	1,#56,'FASTCOPY VERSION 3.0',1,#56
+	locate	30,3
+	db	1,#56,'(c) 1991 by XelaSoft',1,#56
+	locate	30,4
+	db	1,#5A, 1,#57, 1,#57, 1,#57, 1,#57, 1,#57
+	db	1,#57, 1,#57, 1,#57, 1,#57, 1,#57
+	db	1,#57, 1,#57, 1,#57, 1,#57, 1,#57
+	db	1,#57, 1,#57, 1,#57, 1,#57, 1,#57, 1,#5B
+	db	13,10,1,#58,0
+	call	cursetwrt
+	ld	b,37
+	call	streep
+	ld	a,#12
+	out	(c),a
+	ld	b,40
+	call	streep
+	ld	a,#19
+	out	(c),a
+	call	printsp
+	locate	1,6
+	db	1,#56,' Memory found:      KB ram',13,10,1,#56
+	locate	22,7
+	db	'KB vram',13,10
+	db	1,#56,' Number of drives:',13,10,0
+	call	cursetwrt
+	ld	a,#14
+	out	(c),a
+	ld	b,37
+	call	streep
+	ld	a,#15
+	out	(c),a
+	ld	b,40
+	call	streep
+	ld	a,#13
+	out	(c),a
+	call	printsp
+	locate	1,10
+	db	1,#56,13,10, 1,#56,13,10, 1,#56,13,10, 1,#56,13,10,0
+	call	cursetwrt
+	ld	a,#14
+	out	(c),a
+	ld	b,37
+	call	streep
+	ld	a,#15
+	out	(c),a
+	ld	b,40
+	call	streep
+	ld	a,#13
+	out	(c),a
+
+	call	printsp
+	locate	1,15
+	db	1,#56
+	locate	39,15
+	db	1,#56
+	locate	80,15
+	db	1,#56,0
+
+	call	cursetwrt
+	ld	a,#1a
+	out	(c),a
+	ld	b,37
+	call	streep
+	ld	a,#11
+	out	(c),a
+	ld	b,40
+	call	streep
+	ld	a,#1b
+	out	(c),a
+
+	call	printsp
+	locate	39,6
+	db	1,#56,' Source drive     :'
+	locate	80,6
+	db	1,#56
+
+	locate	39,7
+	db	1,#56,' Destination drive:'
+	locate	80,7
+	db	1,#56
+
+	locate	39,8
+	db	1,#56,' Number of copies :'
+	locate	80,8
+	db	1,#56
+
+	locate	39,10
+	db	1,#56,' First track      :'
+	locate	80,10
+	db	1,#56
+
+	locate	39,11
+	db	1,#56,' Last track       :'
+	locate	80,11
+	db	1,#56
+
+	locate	39,12
+	db	1,#54,0
+
+	ld	b,40
+	call	streep
+	ld	a,#13
+	out	(c),a
+	call	printsp
+	locate	39,13
+	db	1,#56,' Auto format      :'
+	locate	80,13
+	db	1,#56,0
+
+	ld	hl,#8000
+	ld	de,#1800
+	ld	bc,#800
+	call	#5c;         geheugen naar vram ==> save eerste 2048 bytes van basic
+	call	init_all;    installeren wd 2793 drive bios
+
+	ld	hl,config1;  configuratie 1 (slots en mapper)
+	call	save_conf
+
+	ld	a,(fout)
+	or	a
+	jp	z,ini_2;     gen fout ==> wd-2793 aanwezig
+	call	printsp
+	db	"Sorry, but this program won't run on your computer.",13,10
+	db	"Please  try to re-install it with another drive bios.",13,10
+	db	13,10,"Press on a key",0
+	call	#156
+	call	#9f
+	jp	quit
+
+ini_2:	ld	a,(bdrive)
+	or	a
+	jr	nz,ini_3;    een B-drive aanwezig ==> alles is al goed
+	
+	xor	a
+	ld	(de_drive),a; destination is A-drive
+	ld	(exchange),a; Exchange drives bij multiple copy kan nooit
+
+ini_3:	ld	a,79
+	ld	(maxtrack),a
+	xor	a
+	ld	(singles),a; dubbelzijdig is default
+
+	ld	b,11
+	xor	a
+invul:	push	bc
+	push	af
+	call	invulfunctie
+	pop	af
+	inc	a
+	pop	bc
+	djnz	invul
+	jr	hoofdlus
+
+streep:	ld	a,#17;       trek een horizontale streep met asci-code #17
+streep2: out	(c),a
+	djnz	streep2
+	ret
+
+bloadtxt: db	'BLOAD"MEMMAN.BIN",R',13
+bloadtxteind:
+
+*l+
+; ********************* #C000 GRENS,   #c000 grens
+*l-
+rest_screen:
+	di
+	ld	a,(#ffdf+9)
+	res	7,a
+	ld	c,9
+	ld	b,a
+	call	#47
+
+	ld	a,(savlines)
+	ld	(#f3b1),a
+	ld	c,3
+	ld	b,#27
+	call	#47
+
+	ld	c,#d
+	ld	b,0
+	call	#47
+
+	ld	hl,savcol
+	ld	de,#f3e9
+	ld	bc,3
+	ldir
+	xor	a
+	call	#5f		; screen 0
+
+	ld	ix,#141
+	jp	domsx2
+
+savcol:	ds	3,0
+savlines: ds	1,0
+
+domsx2:	ld	iy,(#faf7)
+	jp	#1c
+
+begin2:	di;                  initalisatie boven #c000, i.v.m. goede terugkeer
+	ld	hl,0
+	add	hl,sp
+	ld	(savstk),hl; oude stack onthouden
+	ld	sp,#f661;    eerste byte na: INLIN buf
+	call	begin3
+	ld	sp,(savstk)
+	ret
+
+hoofdlus:
+	call	printsp
+	locate	2,15
+	db	"S: Start copying, Q: Quit",0
+	call	sqGr_on
+
+hoofdl2: call	functie;     voer functie fnummer uit, return als char <> (curlinks of currechts)
+	cp	"s"
+	jr	z,startcopy
+	cp	"S"
+	jr	z,startcopy
+	cp	"q"
+	jr	z,quit
+	cp	"Q"
+	jr	z,quit
+	cp	30
+	jr	z,curup
+	cp	31
+	jr	nz,hoofdl2
+
+	ld	a,(fnummer)
+	inc	a
+	cp	6
+	jr	nz,curdwn2
+	ld	a,(nrcopys)
+	dec	a
+	ld	a,7
+	jr	z,curdwn2;   1 copy ==> exchange niet relevant
+	ld	a,(bdrive)
+	or	a
+	ld	a,7
+	jr	z,curdwn2;   geen bdrive ==> exchange niet relevant
+	dec	a;           meer copien en bdrive ==> exchange wel relevant
+curdwn2: cp	11
+	jr	nc,hoofdl2;  te hoog nummer
+	ld	(fnummer),a
+	jr	hoofdl2
+
+curup:	ld	a,(fnummer)
+	dec	a
+	cp	3
+	jr	c,hoofdl2;   te klein nummer
+	cp	6
+	jr	nz,curup2
+	ld	a,(nrcopys)
+	dec	a
+	ld	a,5
+	jr	z,curup2;    1 copy ==> exchange overslaan
+	ld	a,(bdrive)
+	or	a
+	ld	a,5
+	jr	z,curup2;    geen b-drive ==> exchange overslaan
+	inc	a;           meer kopien, en wel een b-drive ==> niet overslaan
+curup2:	ld	(fnummer),a
+	jr	hoofdl2
+
+quit:	memman	30;          initialiseren memman ==> vrijgeven geheugen
+	ld	hl,config1
+	call	rest_conf
+	call	restore_all
+	ld	hl,#1800
+	ld	de,#8000
+	ld	bc,#800
+	call	#59;         vram naar geheugen ==> load eerste 2048 bytes van basic
+	jp	rest_screen; herstel het scherm
+
+startcopy:
+	call	wis_sqtxt
+	call	startc2
+	call	drive_off
+	call	wis_window
+	call	wis_err
+	jp	hoofdlus
+
+functie:
+	ld	a,(fnummer)
+	push	af
+	call	invulfunctie
+	pop	af
+	jr	werk_functie
+
+invulfunctie:
+	ld	hl,invfjmptable
+	jr	$+5
+werk_functie:
+	ld	hl,wrkfjmptable
+	add	a,a;         *2
+	ld	e,a
+	ld	d,0
+	add	hl,de;       met f-nummer corresponderende positie in jmptable
+	ld	a,(hl)
+	inc	hl
+	ld	h,(hl);      adres in jmp table
+	ld	l,a
+	jp	(hl);        spring er naar toe
+
+invfjmptable:;               jump table voor invul routines bij verschillende opties
+	defw	inv_ram;     aantal ram
+	defw	inv_vram;    aantal vram
+	defw	inv_drnrs;   aantal drives
+	defw	inv_sodr;    source drive
+	defw	inv_dedr;    destination drive
+	defw	inv_copynr;  aantal kopien
+	defw	inv_exch;    exchange
+	defw	inv_fitr;    first track
+	defw	inv_latr;    last track
+	defw	inv_aform;   auto format
+	defw	inv_dsss;    double sided/single sided
+
+wrkfjmptable:;               jump table voor edit routines bij verschillende opties
+	defw	wrk_ram;     aantal ram
+	defw	wrk_vram;    aantal vram
+	defw	wrk_drnrs;   aantal drives
+	defw	wrk_sodr;    source drive
+	defw	wrk_dedr;    destination drive
+	defw	wrk_copynr;  aantal kopien
+	defw	wrk_exch;    exchange
+	defw	wrk_fitr;    first track
+	defw	wrk_latr;    last track
+	defw	wrk_aform;   auto format
+	defw	wrk_dsss;    double sided/single sided
+
+wrk_ram:;                    hoeveelheid ram kan niet geedit worden
+wrk_vram:;                   hoeveelheid vram ook niet
+wrk_drnrs:;                  aantal drives ligt ook vast
+
+inv_r1:	in	a,(#fe)
+	push	af
+
+	ld	a,1
+	ld	b,3
+	ld	hl,#8000
+inv_r1a: out	(#fe),a
+	ld	c,(hl)
+	push	bc;          inhouden onthouden
+	ld	(hl),a
+	inc	a
+	djnz	inv_r1a
+	
+	ld	a,1
+	ld	b,3
+inv_r1b: out	(#fe),a
+	cp	(hl)
+	jr	nz,inv_r1c;  mapper verschild van Accu ==> geen mapper blok (meer)
+	inc	a
+	djnz	inv_r1b
+inv_r1c: dec	a;           Accu was 1 teveel
+	ld	(mapaantal),a; aantal mapper bloks (memory manager vind eerste 3 in actieve ram niet)
+	ld	a,3
+	ld	b,a
+inv_r1d: out	(#fe),a
+	pop	de
+	ld	(hl),e;      mapper inhoud herstellen
+	dec	a
+	djnz	inv_r1d
+
+	pop	af
+	out	(#fe),a
+	ret
+
+inv_sodr:
+	ld	hl,#3c06
+	ld	(systemy),hl
+	ld	a,(so_drive); 0=A, 1=B
+	add	a,"A"
+	jp	#a2
+
+inv_dedr:
+	ld	hl,#3c07
+	ld	(systemy),hl
+	ld	a,(de_drive)
+	add	a,"A"
+	jp	#a2
+
+inv_copynr:
+	ld	hl,#3c08
+	ld	(systemy),hl
+	ld	a,(nrcopys)
+	jp	byte_str
+
+inv_exch:
+	ld	hl,#3f08
+	ld	(systemy),hl
+	ld	a,(nrcopys)
+	dec	a
+	jr	z,inv_exwis
+	ld	a,(bdrive)
+	or	a
+	jr	z,inv_exwis
+	call	printsp
+	locate	63,8
+	db	"Exchange: ",0
+	ld	a,(exchange)
+	or	a
+	ld	a,"Y"
+	jr	nz,$+4;      <>0  ==> Yes
+	ld	a,"N";       =0   ==> No
+	jp	#a2
+inv_exwis:
+	call	printsp
+	locate	63,8
+	db	"           ",0
+	ret
+
+inv_fitr:
+	ld	hl,#3c0a
+	ld	(systemy),hl
+	ld	a,(fitrack)
+	jp	byte_str
+
+inv_latr:
+	ld	hl,#3c0b
+	ld	(systemy),hl
+	ld	a,(maxtrack)
+	jp	byte_str
+
+inv_aform:
+	ld	hl,#3c0d
+	ld	(systemy),hl
+	ld	a,(autoform)
+onoff:	or	a
+	jr	nz,printon; <>0  => on
+	call	printsp;     =0  => off
+	db	"OFF",0,#C9
+printon: call	printsp
+	db	"ON ",0,#c9
+
+inv_dsss:
+ 	ld	hl,#290f
+	ld	(systemy),hl
+	call	printsp
+	db	"Double sided/Single sided: ",0
+	ld	a,(singles)
+	or	a
+	ld	a,"D";       = 0 => single sided
+	jr	z,$+4;      <>0 => double sided
+	ld	a,"S"
+	jp	#a2
+
+wrk_sodr:
+	call	#9f
+	ld	hl,so_drive
+	jr	invert;      inverteer (hl), als b-drive bestaat
+
+wrk_dedr:
+	call	#9f
+	ld	hl,de_drive
+        jr	invert
+
+wrk_copynr:
+	call	#9f
+	ld	e,99;        maximum aantal
+	ld	d,1;         minimum aantal
+	ld	hl,nrcopys
+	call	updown;      verhoog (hl) tem maximum aantal, of verlaag tem 0
+	push	af;          A=letter of 0
+	ld	a,6
+	call	invulfunctie; exchange aanzetten/wissen
+	pop	af
+	ret
+
+wrk_exch:
+	call	#9f
+	ld	hl,exchange
+	jr	invert
+
+wrk_fitr:
+	call	#9f
+	push	af
+	ld	a,(maxtrack)
+	ld	e,a
+	ld	d,0
+	ld	hl,fitrack
+	pop	af
+	jr	updown
+
+wrk_latr:
+	call	#9f
+	push	af
+	ld	e,99;        drive die tot 99 kan gaan moet nog worden uitgevonden
+	ld	a,(fitrack)
+	ld	d,a
+	ld	hl,maxtrack
+	pop	af
+	jr	updown
+
+wrk_aform:
+	call	#9f
+	ld	hl,autoform
+	jr	invertab
+
+wrk_dsss:
+	call	#9f
+	ld	hl,singles
+	jr	invertab
+
+invert:
+	cp	28
+	jr	z,invert2
+	cp	29
+	ret	nz
+invert2:
+	ld	a,(bdrive)
+	or	a
+	ret	z
+	ld	a,(hl)
+	xor	1
+	ld	(hl),a
+	xor	a
+	ret
+
+invertab:
+	cp	28
+	jr	z,invertab2
+	cp	29
+	ret	nz
+invertab2:
+	ld	a,(hl)
+	xor	1
+	ld	(hl),a
+	xor	a
+	ret
+
+updown:	cp	28
+	jr	z,up
+	cp	29
+	ret	nz
+	ld	a,(hl)
+	cp	d;           d is minimum
+	ld	a,0;         er mag geen letter meer in de Accu zitten
+	ret	z
+	dec	(hl)
+	ret
+up:	ld	a,(hl)
+	cp	e;           e is maximum
+	ld	a,0;         er mag geen letter meer in de Accu zitten
+	ret	z
+	inc	(hl)
+	ret
+
+
+errGr_on: ld	hl,errGrdon
+	db	#dd
+errGr_off: ld	hl,errGrdoff
+	push	hl
+	ld	hl,#aa0
+	call	#171
+	ld	a,7
+	jr	gr_onoff
+
+sqGr_on: ld	hl,sqGrdon
+	db	#dd
+sqGr_off: ld	hl,errGrdoff
+	push	hl
+	ld	hl,#a8c
+	call	#171
+	ld	a,4
+gr_onoff:
+	ld	bc,(7)
+	ld	b,a
+	pop	hl
+	otir
+	ret
+
+sqGrdon: db	#7f,#ff,#ff,#c0
+errGrdon: db	#7f
+	ds	5,#ff
+	db	#e0
+errGrdoff:
+sqGrdoff: ds	7,0
+	 
+
+startc2: ld	hl,0;        start het kopieer proces (de initialisatie ervan)
+	add	hl,sp
+	ld	(savstk2),hl
+	call	ask_so_flop
+	ld	a,(so_drive)
+	ld	hl,de_drive
+	cp	(hl)
+	jr	z,startc3;   source is destination ==> starten met laden
+
+	ld	a,1
+	ld	(dnummer),a
+	call	ask_de_flop
+
+startc3: call	#156;        kill keybuff
+	call	#9f
+	call	wis_window;
+	call	formdata;    track data aanmaken, dit kan altijd gebeuren
+	ld	a,(autoform)
+	ld	(autoform2),a; aangeven dat bij save eerst nog een track write moet plaatsvinden
+
+	ld	a,(fitrack)
+	ld	(so_head),a
+	ld	(de_head),a
+
+	xor	a
+	ld	(so_side),a
+	ld	(de_side),a
+	inc	a
+	ld	(so_sec),a
+	ld	(de_sec),a
+
+	ld	a,1
+	ld	(eerstemaal),a;   save hoeft de eerste maal niet om flop te vragen
+
+copylus:
+	call	laad;        laad alles vol
+	ld	de,so_head
+	call	para_update; head,track,side voor source updaten
+
+	ld	a,(de_drive)
+	push	af;          start destination onthouden, i.v.m. diskchange
+	ld	a,1
+	ld	(dnummer),a
+savels:	ld	hl,eerstemaal
+	ld	b,(hl)
+	ld	(hl),0
+	ld	a,(lastdrive)
+	ld	hl,de_drive
+	cp	(hl)
+	jr	z,savls1;    destination is source ==> vraag om flop
+
+	ld	a,b
+	or	a
+	jr	nz,savls2;   <>0 ==> eerste maal ==> niet om flop vragen
+	ld	a,(nrcopys)
+	dec	a
+	jr	z,savls2;   maar 1 kopie ==> niet om flop vragen
+savls1:	call	ask_de_flop
+	call	#156
+	call	#9f
+	call	wis_window
+savls2:	call	save;        save alles weg, en als lastdrive = de_drive => flop vragen
+	push	af;          Z => klaar met kopieren, NZ => nog meer laden
+	ld	a,(nrcopys)
+	ld	hl,dnummer
+	cp	(hl)
+	jr	z,savel3;    dnummer is nrcopys  ==> klaar met multiple save
+	pop	af
+	inc	(hl);        dnummer is dnumer+1
+	ld	a,(exchange)
+	or	a
+	jr	z,savels;    geen exchange  ==> saven
+	ld	hl,de_drive
+	ld	a,(hl)
+	xor	1
+	ld	(hl),a;      drive verwisselen
+	jr	savels
+
+savel3:	xor	a
+	ld	(autoform2),a; vanaf nu mag bij saven geen autoformar meer aan begin worden gedaan
+	pop	af;          Z ==> klaar
+	ex	af,af'
+	pop	af
+	ld	(de_drive),a
+	ex	af,af'
+	ret	z;           Z ==> klaar met kopieren
+
+	ld	de,de_head
+	call	para_update; head,sec,side voor save updaten
+
+	ld	a,(so_drive)
+	ld	hl,lastdrive
+	cp	(hl)
+	jr	z,copyl2;    last drive = source ==> wisselen
+	ld	a,(exchange)
+	or	a
+	jr	z,copylus;   er was bij saven geen exchange ==> source flop is nog goed
+	ld	a,(nrcopys)
+	dec	a
+	jr	z,copylus;   maar 1 kopy ==> er is niks gewisseld
+
+copyl2:	call	ask_so_flop
+	call	#156
+	call	#9f
+	call	wis_window
+	jp	copylus
+
+para_update:
+	ld	a,(track_reg)
+	ld	(de),a
+	inc	de
+	inc	de
+	ld	a,(sector_reg)
+	ld	(de),a
+	inc	de
+	inc	de
+	ld	a,(side_reg)
+	and	1
+	ld	(de),a
+	ret
+
+laad:	ld	a,(so_drive)
+	call	selecdab
+	ld	a,(so_head)
+	call	seek_track
+	ld	a,(so_sec)
+	call	selec_sec
+	ld	a,(so_side)
+	ld	(side_reg),a
+	ld	a,1
+	ld	(lezen),a
+	jr	lstotal
+
+save:	ld	a,(de_drive)
+	call	selecdab
+	ld	a,(de_head)
+	call	seek_track
+	ld	a,(de_sec)
+	call	selec_sec
+	ld	a,(de_side)
+	ld	(side_reg),a
+
+	ld	a,(autoform2)
+	or	a
+	call	nz,form_wrt; eerste keer aan het saven en auto format ==> eerst track write doen
+	xor	a
+	ld	(lezen),a
+
+lstotal: call	lsnmvi;      load/save norm video
+	ret	z;           z-flag ==>   logic track > logic maxtrack
+	call	lsexvi;      load/save extended video
+	ret	z
+	call	lsr8;        load/save addr #8000, eventueel ruimte voor track
+	ret	z
+	call	lsmap;       load/save mapper 2..3
+	ret	z
+	jp	lsman;       load/save memory manager
+
+; ****************************
+; * lees en save naar norm video
+
+lsnmvi:	di
+	ld	a,(7)
+	inc	a
+	ld	c,a
+	xor	a;           set MXC to 0 ==> normal vram
+	call	set_MXC
+	ld	a,#20
+	ld	(vaddr),a;   MSB video adres binnen actuele blok
+	ld	a,(norm_vrm)
+	jp	lstvi;    laad totaal naar video-ram
+
+; ****************************
+; * lees en save naar extended video
+
+lsexvi:	di
+	ld	a,(7)
+	inc	a
+	ld	c,a
+	ld	a,%01000000; set MXC to 1 ==> expanded vram
+	call	set_MXC
+	xor	a
+	ld	(vaddr),a
+	ld	a,(ext_vrm)
+	call	lstvi
+	push	af
+	xor	a
+	call	set_MXC
+	pop	af
+	ret
+
+; ****************************
+; * lees en save naar video (norm en extended)
+
+lstvi:	or	a;           aantal blokken
+	jr	nz,lstvi2;   minimaal 1 blok
+	inc	a;           z-flag resetten, want Z-flg ==> klaar met flop
+	ret
+lstvi2:	ld	b,a
+	xor	a
+lstvi3:	call	setvblok;    stel in welk blok van 16K: begin,dus 0
+	push	bc
+lstvi4:                 ;    tweede entry voor als blok nog niet vol is
+	ld	b,3
+lstvi5:	push	bc
+	call	srvrm;       save of read naar/uit vram, addres: vaddr=MSB
+	pop	bc
+	or	a
+	jr	z,lttvi6;    geen fout opgetreden ==> verder laden
+	cp	128;         alleen drive not ready ==> disk offline, dus geen retry
+	jr	z,$+4
+	djnz	lstvi5;      maximaal 3 maal proberen
+	ld	hl,(errtab2)
+	call	error;       foutmelding geven en vragen wat te doen
+	jr	z,lstvi4;    (R)etry ==> Z,  (C) ==> NZ
+
+lttvi6:	ld	a,(sector_reg)
+	inc	a
+	ld	(sector_reg),a
+	cp	10
+	call	z,nexttrack; nexttrack ==> Z-flg als klaar
+	jp	nz,$+5
+	pop	bc
+	ret
+	ld	a,(vaddr)
+	inc	a
+	inc	a
+	ld	(vaddr),a;   volgende 512 bytes
+	cp	#40;         blok is vol
+	jr	nz,lstvi4;   nog niet vol
+	xor	a
+	ld	(vaddr),a
+	ld	a,(saveVblok)
+	inc	a
+	pop	bc
+	djnz	lstvi3;      volgend blok
+	xor	a
+	inc	a;           Z-flg resetten
+	ret
+
+set_read: ld	b,a;         MSB onthouden, neem aan dat MSB binnen 16K zit
+	xor	a
+	out	(c),a
+	ld	a,b
+	out	(c),a
+	ret
+
+set_wrt: ld	b,a
+	xor	a
+	out	(c),a
+	ld	a,b
+	or	%01000000
+	out	(c),a
+	ret
+
+srvrm:	ld	a,(lezen)
+	or	a
+	ld	a,(vaddr)
+	jr	z,savrm
+	call	set_wrt
+	dec	c
+	call	sec_vrm
+	inc	c
+	ret
+savrm:	call	set_read
+	dec	c
+	call	vrm_sec
+	inc	c
+	ret
+
+set_MXC: ld	(saveMXC),a; C moet naar vdp i/o wijzen
+	out	(c),a
+	ld	a,45+128
+	out	(c),a;       register 45
+	ret
+
+setvblok: ld	(saveVblok),a
+	out	(c),a
+	ld	a,#8e
+	out	(c),a
+	ret
+
+; ****************************
+; * lees en save naar ram blok #8000
+
+lsr8:
+	ld	hl,config1
+	call	rest_conf
+	ld	a,(autoform)
+	or	a
+	ld	a,#80
+	jr	z,lsr82
+	ld	a,#80+28;    28 = 7*4 (4 in msb => 4K) ==> verschuiving voor trackdata
+lsr82:	ld	(raddr),a;   MSB van adres in ram
+	jp	lsblok;      laad/save een blok van maximaal 16K naar/van ram
+
+; ****************************
+; * lees en save naar mapper 2..3 (indien aanwezig))
+
+lsmap:	ld	a,(mapaantal)
+	or	a
+	jr	nz,lsmap2
+	inc	a
+	ret;                 geen mapper aanwezig
+lsmap2:	push	af
+	ld	hl,config1
+	call	rest_conf
+	pop	af
+
+	ld	b,a
+lsmap3:	push	bc
+	ld	a,#80
+	ld	(raddr),a
+	ld	a,(config1+4); pr, sec, fc, fd, FE
+	and	3;           alleen nr 1..3, de rest hoort toch bij memory manager
+	cp	b
+	jp	nz,lsmap4;   nummer <> mapFE originele configuratie ==> laden
+	inc	b;           NZ maken
+	jp	lsmap5
+lsmap4:	ld	a,b
+	out	(#fe),a
+	call	lsblok
+lsmap5:	pop	bc
+	ret	z
+	djnz	lsmap3
+	inc	b
+	ret
+
+; ***************************
+; * lees en save naar memory manager (indien aanwezig))
+
+lsman:	ld	a,(nrfsegs)
+	or	a
+	jr	nz,lsman2
+	inc	a
+	ret
+lsman2:	ld	hl,config1
+	call	rest_conf
+	ld	a,(nrfsegs)
+	ld	b,a
+	ld	hl,fsegstab
+
+lsman3:	push	bc
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl);      fseg id-ophalen
+	inc	hl
+	push	hl
+	ex	de,hl
+use2:	call	0;           memman use functie 2, wordt ingevuld door initialisatie
+	ld	a,#80
+	ld	(raddr),a
+	call	lsblok
+	pop	hl
+	pop	bc
+	ret	z
+	djnz	lsman3
+	inc	b
+	ret
+
+lsblok: ;                    laad/save een blok van maximaal 16K naar/van ram
+	ld	b,3
+lsbl2:	push	bc
+	call	srram;       save of read naar/uit vram, addres: raddr=MSB
+	pop	bc
+	or	a
+	jr	z,lsbl3;     geen fout opgetreden ==> verder laden
+	cp	128;         alleen drive not ready ==> disk offline, dus geen retry
+	jr	z,$+4
+	djnz	lsbl2;       maximaal 3 maal proberen
+	ld	hl,(errtab2)
+	call	error;       foutmelding geven en vragen wat te doen
+	jr	z,lsblok;    (R)etry ==> Z,  (C) ==> NZ
+
+lsbl3:	ld	a,(sector_reg)
+	inc	a
+	ld	(sector_reg),a
+	cp	10
+	call	z,nexttrack; nexttrack ==> z-flag als klaar
+	ret	z
+	ld	a,(raddr)
+	inc	a
+	inc	a
+	ld	(raddr),a;   volgende 512 bytes
+	cp	#c0;         blok is vol
+	jr	nz,lsblok;   nog niet vol
+	inc	a;           A was #40 ==> inc => #41 ==> NZ
+	ret
+
+srram:	ld	a,(raddr)
+	ld	d,a
+	ld	e,0
+	ld	a,(lezen)
+	or	a
+	jp	z,ram_sec
+	jp	sec_ram
+
+error:
+	push	af;          error bits
+	push	hl;          errtxt
+	ld	a,(saveMXC)
+	ld	b,a
+	push	bc;          saveMXC, en vdp-io
+	xor	a
+	call	set_MXC
+	call	errGr_on
+	ld	hl,#0211;    x=2,y=17
+	ld	(systemy),hl
+
+	call	printsp
+	db	"Error on drive: ",0
+	ld	a,(lastdrive)
+	add	a,"A"
+	call	#a2
+	call	printsp
+	db	", track: ",0
+	ld	a,(track_reg)
+	call	byte_str
+	call	printsp
+	db	", sector: ",0
+	ld	a,(sector_reg)
+	call	byte_str
+	call	printsp
+	db	", side: ",0
+	ld	a,(side_reg)
+	and	1
+	add	a,"1"
+	call	#a2
+
+	ld	hl,#0212
+	ld	(systemy),hl
+	pop	bc
+	pop	hl;          errtxt
+	pop	af;          error bits
+	push	bc
+	call	biterrprint
+	call	printsp
+	db	" (A)bort, (C)ontinue or (R)etry ?",0
+err2:	call	#9f
+	res	5,a
+	cp	"A"
+	jr	z,errabort
+	cp	"C"
+	jr	z,errcore;   continue or retry
+	cp	"R"
+	jr	z,errcore
+	jr	err2
+errabort:
+	call	wis_err
+	call	errGr_off
+	ld	hl,config1
+	call	rest_conf;   oorspronkelijke configuratie herstellen
+	ld	sp,(savstk2)
+	ret
+
+errcore: di
+	push	af
+	call	wis_err
+	call	errGr_off
+	pop	af
+	pop	bc;          saveMXC en vdp-io
+	ld	d,a;         "C" of "R"
+	ld	a,b
+	call	set_MXC;     extended of normal video ram
+	ld	a,(saveVblok)
+	call	setvblok;    vdp-blok
+	ld	a,d
+	cp	"R";         Retry ==> Z,  Continue ==> NZ
+	ret
+
+nexttrack: ld	a,(singles)
+	or	a
+	jr	z,nexttrdb;  dubbelzijdig next track
+	ld	hl,maxtrack
+	ld	a,(track_reg)
+	cp	(hl)
+	ret	z;           het track was al maximaal, dus nutteloos om naar volgend te gaan
+	call	strch
+	jr	nexttreind
+
+nexttrdb:
+	ld	a,(side_reg)
+	and	1
+	jr	z,nexttrd2;  was side 0 ==> flop kan nog niet vol zijn
+	ld	hl,maxtrack
+	ld	a,(track_reg)
+	cp	(hl)
+	ret	z;           was side 1 en maximaal ==> klaar
+nexttrd2: call dtrch
+nexttreind:
+	ld	a,(lezen)
+	or	a
+	ret	nz;          als aan het lezen, dan klaar
+	ld	a,(autoform)
+	or	a
+	push	bc;          C onthouden
+	call	nz,form_wrt
+	pop	bc
+	xor	a
+	inc	a
+	ret
+
+
+; ****************************
+; *  pas parameters binnen format data gebied aan en schrijf weg
+
+form_wrt:
+	ld 	hl,config2
+	call	save_conf;   huidige configuratie saven
+	ld	hl,config1
+	call	rest_conf;   originele opstart configuratie herstellen
+	call	formw2
+	call	wacht30ms
+	ld	hl,config2
+	jp	rest_conf
+
+formw2:	ld	hl,#8000+138
+	ld	de,627
+	ld	bc,(track_reg)
+	ld	a,(side_reg)
+	and	1
+	ld	b,9
+formw3:	ld	(hl),c;      track nummer
+	inc	hl
+	ld	(hl),a;      side nummer
+	add	hl,de
+	djnz	formw3
+formw4:	ld	de,#8000
+	call	ram_trk
+	or	a
+	ret	z
+	ld	hl,(errtab3)
+	call	error
+	jr	z,formw4;    (R)etry ==> Z,  (C)ontinue ==> NZ
+	ret
+
+; ****************************
+; * maak track data aan t.b.v. track write
+
+formdata: 
+	ld 	hl,config2
+	call	save_conf;   huidige configuratie saven
+	ld	hl,config1
+	call	rest_conf;   originele opstart configuratie herstellen
+	call	formd2
+	ld	hl,config2
+	jp	rest_conf
+
+formd2:	ld	hl,#8000
+	ld	de,#8001
+	ld	bc,80
+	ld	(hl),#4e
+	ldir;                80 * #4e
+	ld	(hl),0
+	ld	bc,12
+	ldir;                12 * 0
+	ld	(hl),#f6
+	ld	bc,3
+	ldir;                3 * #f6
+	ld	(hl),#fc
+	inc	hl
+	inc	de;          1 * #fc
+	ld	(hl),#4e
+	ld	bc,26
+	ldir;                26 * #4e    :  deze samen ==> track header (122 bytes)
+
+	ld	b,9;         de 9 sectors
+formdat2: push	bc
+	ld	a,10
+	sub	b;           A = sector nummer
+	ld	(hl),0
+	ld	bc,12
+	ldir;                12 * 0
+	ld	(hl),#f5
+	ld	bc,3
+	ldir;                3 * #f5
+	ld	(hl),#fe
+	inc	hl
+	inc	de;          1 * #fe
+	push	af
+	ld	a,(track_reg)
+	ld	(hl),a
+	inc	hl
+	inc	de;          1 * track nummer
+	ld	a,(side_reg)
+	and	1
+	ld	(hl),a
+	inc	hl
+	inc	de;          1 * side
+	pop	af
+	ld	(hl),a
+	inc	hl
+	inc	de;          1 * sector nummer
+	ld	(hl),2
+	inc	hl
+	inc	de;          1 * sector length
+	ld	(hl),#f7
+	inc	hl
+	inc	de;          1 * #f7
+	ld	(hl),#4e
+	ld	bc,24
+	ldir;                24 * #4e
+	ld	(hl),0
+	ld	bc,12
+	ldir;                12 * 0
+	ld	(hl),#f5
+	ld	bc,3
+	ldir;                3 * #f5
+	ld	(hl),#fb
+	inc	hl
+	inc	de;          1 * #fb
+	ld	(hl),#e5
+	ld	bc,512
+	ldir;                512 * #e5
+	ld	(hl),#f7
+	inc	hl
+	inc	de;          1 * #f7
+	ld	(hl),#4e
+	ld	bc,54
+	ldir;                54 * #4e
+	pop	bc
+	djnz	formdat2;          : 9 sector ==> 9 * 628 = 5652 bytes
+
+	ld	(hl),#4e
+	ld	bc,1079
+	ldir;                in totaal 1080 * #4e  ==> totaal # bytes: 122+5652+1080=6854 ==> < 7 Kbytes
+	ret
+
+
+ask_so_flop:
+	call	drive_off
+	call	sqGr_on
+	call	printsp
+	locate	3,10
+	db	"Insert source disk"
+	locate	3,11
+	db	0
+	ld	a,(so_drive)
+	add	a,"A"
+	ld	(drive_let),a
+	ld	hl,drive_txt
+	jp	printhl;     vragen om source flop in drive
+
+ask_de_flop:
+	call	drive_off
+	call	sqGr_on
+	call	printsp
+	locate	3,12
+	db	"Insert destination disk ",0
+	ld	a,(nrcopys)
+	dec	a
+	ld	a,(dnummer)
+	call	nz,byte_str; multiple copy ==> destination disk N vragen
+	ld	hl,#030d
+	ld	(systemy),hl
+	ld	a,(de_drive)
+	add	a,"A"
+	ld	(drive_let),a
+	ld	hl,drive_txt
+	jp	printhl;     vragen om destination flop in andere drive
+
+selecdab:
+	push	af
+	call	selecdab2
+	pop	de
+	ret	nc;          alles goed
+	push	de
+	call	drive_off
+	call	printsp
+	locate	2,17
+	db	'Disk offline',13,10,' (R)etry or (A)bort ? ',0
+	call	errGr_on
+	call	#156
+	ld	a,'R'
+	ld	(ant_yes),a
+	ld	a,'A'
+	ld	(ant_no),a
+	call	antwoord
+	push	af
+	call	wis_err
+	call	errGr_off
+	pop	af
+	pop	de
+	or	a
+	ld	a,d
+	jr	nz,selecdab; True ==> Retry
+	ld	sp,(savstk2); naar eind copy routine terugkeren
+	ret
+selecdab2: or	a
+	jp	z,sel_drivea; drive A inschakelen
+	jp	sel_driveb;  drive B inschakelen
+
+wis_sqtxt:
+	call	sqGr_off
+	ld	hl,#020f
+	ld	b,1
+	jr	wis_lines
+
+wis_window:
+	call	wis_sqtxt
+	ld	hl,#030a
+	ld	b,4
+	jr	wis_lines
+
+wis_err:
+	ld	hl,#2011;    x=32, y=17  ==> tweede helft van track,sec,side wissen
+	ld	b,1
+	call	wis_lines
+
+	ld	hl,#0111
+	ld	b,9
+wis_lines: ld	(systemy),hl
+	ld	a,(7)
+	ld	c,a
+
+wis_l2:	push	bc
+	call	cursetwrt
+	ld	a,32
+	ld	b,34
+wis_l3: out	(c),a
+	djnz	wis_l3
+	ld	hl,systemy
+	inc	(hl)
+	pop	bc
+	djnz	wis_l2
+	ret
+
+save_conf:
+	push	bc
+	push	af
+	in	a,(#a8)
+	ld	(hl),a
+	inc	hl
+	ld	a,(#ffff)
+	cpl
+	ld	(hl),a
+	inc	hl
+	ld	c,#fc
+	ini;                 in(c) ==> HL, HL+1 ==> HL
+	inc	c;           #fd
+	ini
+	inc	c;           #fe
+	ini
+	pop	af
+	pop	bc
+	ret
+
+rest_conf: push	bc
+	push	af
+	ld	a,(hl)
+	out	(#a8),a
+	inc	hl
+	ld	a,(hl)
+	ld	(#ffff),a
+	inc	hl
+	ld	c,#fc
+	outi
+	inc	c;           #fd
+	outi
+	inc	c;           #fe
+	outi
+	pop	af
+	pop	bc
+	ret
+
+byte_str:
+	ld	c,10
+	call	byte_s2
+	ld	c,1
+byte_s2: ld	b,0
+byte_s3: sub	c
+	jr	c,byte_s4;   1 maal teveel afgetrokken
+	inc	b
+	jr	byte_s3
+byte_s4: add	a,c;         want er was 1 maal teveel afgetrokken
+	push	af
+	ld	a,b
+	add	a,"0"
+	call	#a2
+	pop	af
+	ret
+
+; routine om de integer in HL decimaal uit te printen
+
+int_str: xor a;              aangepaste versie: HL moet kleiner zijn dan 10.000
+ ld (nulflag),a
+ ld bc,1000
+ call int_str2
+ ld bc,100
+ call int_str2
+ ld bc,10
+ call int_str2
+ ld bc,1
+ call int_str2
+ ret
+ 
+int_str2: call int_str3
+ or a
+ jr z,int_str4
+ push af
+ ld a,1
+ ld (nulflag),a              
+ pop af
+ add a,"0"
+int_str5: jp #A2 ; uitprinten getal 
+ 
+int_str4: ld a,(nulflag)
+ or a
+ ld a," "
+ jr z,int_str5 ; er wordt geen cijfer bijgezet, maar een spatie
+ ld a,"0"
+ jr int_str5
+ 
+int_str3: xor a ; reset carry flag en maak accu 0
+int_str32: sbc hl,bc
+ inc a
+ jr nc,int_str32
+ dec a
+ add hl,bc
+ ret
+
+nulflag: defs 1;             geeft aan of er al een 0 is geweest
+ 
+drive_txt: db	'in drive: '
+drive_let: db	0
+	locate	2,15
+	db	#ff,"     Press on a key    ",0
+
+
+savstk: defs	2;           totale stack, i.v.m. eigen stack vanwege hoge positie in memory
+savstk2: defs	2;           tijdelijk stack pointer onthouden t.b.v. fout afhandeling
+mapaantal: db	0;           aantal blokken in mapper actieve ram (max 3, rest vindt de memory manager wel)
+nrfsegs: db	0;           aantal f-segs
+fsegstab: defs	94,0;        segment id's (47*2) ==> 752 K aan segmenten
+
+config1: defs	5;           standaard systeem configuratie (pr slt, sec slt, map)
+config2: defs	5;           tijdelijk onthouden tijdens track write
+
+raddr: defs	1;           MSB van ram adres binnen 16K blok
+
+vaddr: defs	1;           MSB van video adres binnen 16K blok
+saveVblok: defs	1;           blok van 16K
+saveMXC: defs	1;           extended / normal video ram
+
+fnummer: db	3;           huidige functie nummer
+nrcopys: db	1;           aantal kopien
+dnummer: db	0;           huidige destination drive nummer
+autoside: db	0;           0 = geen auto side,  1 = wel autoside
+eerstemaal: db	0;           eerstemaal=1 ==> niet om flop vragen bij saven
+
+norm_vrm: db	0;           aantal blokken van 16K in normale vram
+ext_vrm: db	0;           aantal blokken van 16K in extended vram
+
+so_drive: db	0;           source drive: A=0 , B=1
+de_drive: db	1;           destination drive
+
+so_head: db	0;           huidige source head
+de_head: db	0;           huidige destination head
+so_sec: db	0
+de_sec: db	0
+so_side: db	0
+de_side: db	0
+
+exchange: db	0;           0 = geen exchange , 1=wel exchange
+fitrack: db	0;           first track
+autoform: db	0;           0 = autoformat off, 1=on
+autoform2: db	0;           0 = geen format bij begin save, 1=wel
+
+eind:		; ************* vanaf hier komt de wd2793 bios
+
+; 'header' die aan eind programma kan komen voor bij gebruik van
+; wd 2793 bios v4.1
+; (c) 1991 by XelaSoft
+; A. Wulms
+; Pelikaanhof 143 d
+; 2312 EH Leiden
+; 3-8-1991
+
+*l-
+
+; ***********************
+; * De jump table
+
+init_all:	equ eind+  0
+init_part:	equ eind+  3
+restore_all:	equ eind+  6
+dubbel_enkel:	equ eind+  9
+trackup:	equ eind+ 12
+logtrackup:	equ eind+ 15
+trackdown:	equ eind+ 18
+logtrackdown:	equ eind+ 21
+strch:		equ eind+ 24
+dtrch:		equ eind+ 27
+strdown:	equ eind+ 30
+dtrdown:	equ eind+ 33
+selecdra:	equ eind+ 36
+selecdrb:	equ eind+ 39
+drive_off:	equ eind+ 42
+biterrprint:	equ eind+ 45
+cursetwrt:	equ eind+ 48
+cursetrd:	equ eind+ 51
+cursaddr:	equ eind+ 54
+antwoord:	equ eind+ 57
+reportwd:	equ eind+ 60
+printhl:	equ eind+ 63
+printsp:	equ eind+ 66
+sel_drivea:	equ eind+ 69
+sel_driveb:	equ eind+ 72
+step_in:	equ eind+ 75
+step_out:	equ eind+ 78
+seek_track:	equ eind+ 81
+res_drive:	equ eind+ 84
+side0:		equ eind+ 87
+side1:		equ eind+ 90
+selec_sec:	equ eind+ 93
+sec_vrm:	equ eind+ 96
+sec_ram:	equ eind+ 99
+adm_ram:	equ eind+102
+trk_ram:	equ eind+105
+drv_vrm:	equ eind+108
+drv_ram:	equ eind+111
+vrm_sec:	equ eind+114
+ram_sec:	equ eind+117
+ram_trk:	equ eind+120
+vrm_drv:	equ eind+123
+ram_drv:	equ eind+126
+set_command:	equ eind+129
+exe_command:	equ eind+132
+wacht30ms:	equ eind+135
+getversion:	equ eind+138
+err_end:	equ eind+141
+
+; ***********************
+; * De variabelen
+
+kopa:		equ eind+#c6
+kopb:		equ eind+#c7
+seca:		equ eind+#c8
+secb:		equ eind+#c9
+sidea:		equ eind+#ca
+sideb:		equ eind+#cb
+
+lezen:		equ eind+#cc
+
+bdrive:		equ eind+#cd
+singles:	equ eind+#ce
+lastdrive:	equ eind+#cf
+
+fout:		equ eind+#d0
+
+save_fd9a:	equ eind+#d1
+save_fd9f:	equ eind+#d2
+
+maxtrack:	equ eind+#d3
+
+ant_yes:	equ eind+#d4
+ant_no:		equ eind+#d5
+
+errtab1:	equ eind+#d6
+errtab2:	equ eind+#d8
+errtab3:	equ eind+#da
+
+track_reg:	equ eind+#dc
+sector_reg:	equ eind+#dd
+side_reg:	equ eind+#de
+
+writefirst:	equ eind+#df
+readfirst:	equ eind+#e0
+c7ffd:		equ eind+#e1
+*l+
+:	equ eind+#df
+readfirst:	equ eind+#e0
+c7ffd:		equ eind+#e1
+*l+
+l+
+nd+#d8
+errtab3:	equ eind+#da
+

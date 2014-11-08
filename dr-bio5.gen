@@ -1,0 +1,1865 @@
+; TC 8566 AF (op addr #7ff8) BIOS VERSIE 1.0, gedeeltelijk compatible met
+; WD 2793 BIOS 4.1
+; (c) 1991 by XelaSoft
+; A. Wulms
+; Pelikaanhof 127c
+; 2312 EG Leiden
+; 4-5-1993
+; Deze source levert het bestand: DR-BIO5.DAT
+;  tc8566af op addr #7ff8 is o.a. gebruikt in de sanyo WAVY70FD MSX 2+
+ org 0;		organizen vanaf adres 0, dan een lader maken die alle
+;		absolute adressen in vult t.o.v. het door de gebruiker
+;		ingestelde begin adres ==> semi relocteerbare code
+
+*l+
+		ORG	#CA19-7
+		DB	#FE
+		DW	#CA19
+		DW	eind
+		DW	#CA19
+*L-
+
+;	***********************
+;	* Een aantal constantes
+
+ctrl_reg0:	equ	#7ff8		; control register 0
+ctrl_reg1:	equ	#7ff9		; control register 1
+stat_reg:	equ	#7ffa		; main status register
+data_reg:	equ	#7ffb		; data/commando register
+
+systemy:	equ #f3dc;	rom bios Y coordinaat (lsb, msb is x-coord)
+
+ld_hl_de:	macro
+		ld	l,e
+		ld	h,d
+		endm
+
+ld_de_hl:	macro
+		ld	e,l
+		ld	d,h
+		endm
+
+ld_hl_bc:	macro
+		ld	l,c
+		ld	h,b
+		endm
+
+ld_bc_hl:	macro
+		ld	c,l
+		ld	b,h
+		endm
+
+;	***********************
+;	* De jump table
+
+ jp init_all	; drives en systeem variabelen selecteren/initialiseren
+ jp init_part	; drives resetten (met systeem variabelen)
+ jp restore_all	; originele staat herstellen
+ jp dubbel_enkel; onderzoeken of een floppie dubbel/enkelzijdig is
+ jp trackup	; track := track+1,  sector := 1, controlle op maxtrack
+ jp logtrackup	; track/side+1, sector := 1, controlle op maxtrack
+ jp trackdown	; track := track-1, sector := 1, controlle op track 0
+ jp logtrackdown; track/side-1, sector := 1, controlle op track 0
+ jp strch	; track := track+1, sector := 1
+ jp dtrch	; track/side+1, sector := 1
+ jp strdown 	; track := track-1, sector := 1
+ jp dtrdown 	; track/side-1, sector := 1
+ jp selecdra 	; selecteer drive A fysiek
+ jp selecdrb 	; selecteer drive B fysiek
+ jp drive_off 	; zet drives uit
+ jp biterrprint ; print foutmeldingen
+ jp cursetwrt 	; set vdp-write in namentabel, op systemy
+ jp cursetrd 	; set vdp-read in namentabel, op systemy
+ jp cursaddr 	; bereken positie in namen tabel, op systemy
+ jp antwoord 	; wacht op antwoord (van toets bord)
+ jp reporttc 	; print of tc8566af wel of niet aanwezig is
+ jp printhl 	; print data vanaf HL, afgesloten met 0-byte
+ jp printsp 	; print data vanaf aanroep adres, afgesloten met 0-byte
+ jp sel_drivea 	; selecteer drive A logisch
+ jp sel_driveb 	; selecteer drive B logisch
+ jp step_in 	; track := track+1
+ jp step_out 	; track := track-1
+ jp seek_track 	; track := Accu
+ jp res_drive 	; track := 0
+ jp side0 	; selecteer side 0
+ jp side1 	; selecteer side 1
+ jp selec_sec 	; sector := Accu
+ jp sec_vrm 	; read sector naar vram
+ jp sec_ram 	; read sector naar ram
+ jp adm_ram 	; adres mark + status flag naar ram
+ jp trk_ram 	; track naar ram, kan tc8566 echter niet => altijd error
+ jp drv_vrm 	; lees iets van drive naar vram (in: ingevuld commando blok)
+ jp drv_ram 	; lees iets van drive naar ram  (in: ingevuld commando blok)
+ jp vrm_sec 	; schrijf vram naar sector
+ jp ram_sec 	; schrijf ram naar sector
+ jp ram_trk 	; formateer 1 track in ibm format
+ jp vrm_drv 	; schrijf uit vram naar drive (in: ingevuld commando blok)
+ jp ram_drv 	; schrijf uit ram naar drive (in: ingevuld commando blok)
+ jp set_command ; stel een wd2793 commando in (kan niet => doe niks)
+ jp exe_command ; wacht tot tc8566af klaar is met commando
+ jp wacht30ms 	; wacht 30 mS
+ jp getversion	; H = type drive controller , L = versie nummer (BCD) 
+ jp err_end	; drive controller resetten na fout
+ ds 54,0
+; eventuele uitbreiding jump table met maximaal 18
+; nieuwe bios routines
+
+; ***********************
+; * De systeem variabelen
+
+kopa:		defs 1 	; positie kop a     (0..79)
+kopb:		defs 1 	; positie kop b     (0..79)
+seca:		defs 1 	; positie sector a  (1..9)
+secb:		defs 1 	; positie sector b  (1..9)
+sidea:		defs 1 	; kant van drive a  (0..1)
+sideb:		defs 1 	; kant van drive b  (0..1)
+
+lezen:		defs 1 	; 0=lezen       , 1=schrijven
+
+bdrive:		defs 1 	; 0=geen b-drive, 1=wel een b-drive
+singles:	defs 1 	; 0=dubbelzijdig, 1=enkelzijdig
+lastdrive:	defs 1 	; 0=A is actief ,  1=B is actief
+
+fout:		defs 1 	; 0=wel tc8566af,   1=geen tc8566af
+
+save_fd9a:	defs 1 	; kopie van (#fd9a)
+save_fd9f:	defs 1 	; kopie van (#fd9f)
+
+maxtrack:	db 81 	; maximum track nummer
+
+antw_yes:	db "Y" 	; standaard letter voor Ja (Yes)
+antw_no:	db "N" 	; standaard letter voor Nee (No)
+
+errtab1:	defw errtxt1 ; pointer naar tabel type I foutmeldingen
+errtab2:	defw errtxt2 ; pointer naar tabel type II foutmeldingen
+errtab3:	defw errtxt3 ; pointer naar tabel type III foutmeldingen
+
+ctrack_reg:	defs 1,0
+csector_reg:	defs 1,0
+cside_reg:	defs 1,0
+
+writefirst:	defs 1,0
+readfirst:	defs 1,0
+
+		ds	1,0	; wd2793 specifieke variabele
+
+cctrl_reg0:	db	0	; alleen voor intern gebruik
+oldcpu:		db	0	; oude CPU mode
+
+		ds	22,0	; ruimte voor nog 22 systeem variabelen
+
+; ***********************
+; * de routines
+; ***********************
+
+init_all:
+; initialiseer drives, systeem variabelen, drives zijn hierna uit
+; in:  -
+; uit:
+;   fout:      0 = wel tc8566af, 1 = geen tc8566af
+;   bdrive:    0 = geen b-drive, 1 = wel een b-drive
+;   lastdrive:=0 (A-drive is actuele drive)
+;   z80 is geselecteerd (op turbo-r)
+; wijzigt: HL,DE,BC,AF,DI,AF', interrupt hooks, slots
+		ld	a,(#2d)
+		cp	3
+		jr	c,notur1	; geen turbo-r
+		call	#183		; get cpu mode
+		ld	(oldcpu),a
+		or	a
+		jr	z,$+3
+		xor	a		; was r800 => pak z80 mode
+		or	#80
+		call	#180		; pak goed cpu mode
+notur1:		ld	c,#6f
+		call	#f37d		; BC = MSX-DOS kernel version
+		or	a
+		jr	nz,nodos2
+		ld	a,b
+		cp	2
+		jr	c,nodos2	; kernel < 2.xx ==> geen dos 2
+		ld	bc,#ff5f	; B=#FF => flush all buffers
+		ld	d,b		; D=#FF => invalidate buffers
+		call	#f37d		; flush and invalidate disk buffers
+
+nodos2:		xor	a
+		ld	(fout),a
+		ld	a,(#fd9a)
+		ld	(save_fd9a),a
+		ld	a,(#fd9f)
+		ld	(save_fd9f),a
+		ld	a,#c9
+		ld	(#fd9a),a
+		ld	(#fd9f),a
+
+		ld	a,(#fb22)
+		ld	h,#40
+		call	#24		; drive controller inschakelen
+
+		call	ready_drv	; ready line = drive
+
+		xor	a
+		ld	(ctrl_reg0),a	; reset FDC
+		call	wacht30ms	; dit moet ruim genoeg zijn
+		ld	a,4
+		ld	(cctrl_reg0),a
+		ld	(ctrl_reg0),a
+
+		ld	b,0
+chtc0:		ld	a,(stat_reg)
+		add	a,a
+		jr	c,maybetc0	; bit 7 geset => mischien TC
+		djnz	chtc0
+		jr	geentc8566af	; nog geen reactie => geen tc8566af
+maybetc0:	jr	nz,geentc8566af	; status was <> #80 => fout
+
+		ld	a,4
+		ld	(data_reg),a	; geef sense device status commando
+		ld	b,0
+chtc1:		ld	a,(stat_reg)
+		add	a,a
+		jr	c,maybetc1	; bit 7 geset => request for master
+		djnz	chtc1		; lees weer status
+; nog geen reactie => geen tc8566af
+geentc8566af:	ld	a,1
+		ld	(fout),a
+		ret
+maybetc1:	jp	m,geentc8566af	; tc8566af zou data not input hebben
+		bit	5,a
+		jr	z,geentc8566af	; FDC zou nu busy zijn
+
+		xor	a
+		ld	(data_reg),a	; head 0, drive 0
+		ld	b,a
+chtc2:		ld	a,(stat_reg)
+		add	a,a
+		jr	c,maybetc2	; bit 7 geset => request for master
+		djnz	chtc2
+		jr	geentc8566af	; nog niet gereageerd => geen tc8566af
+maybetc2:	jp	p,geentc8566af	; tc8566af zou data output hebben
+		bit	5,a
+		jr	z,geentc8566af	; FDC zou nu busy zijn
+
+		ld	a,(data_reg)	; A is nu status register 3
+		and	7		; krijgen we head 0, drive 0 terug
+		jr	nz,geentc8566af	; nee => geen tc8566af
+		ld	b,0
+chtc3:		ld	a,(stat_reg)
+		add	a,a
+		jr	c,maybetc3
+		djnz	chtc3
+		jr	geentc8566af	; nog geen reactie ? => geen tc
+maybetc3:	jp	m,geentc8566af	; fdc wil nog schrijven ==> fout
+
+		ld	a,#DF
+		ld	(c1),a		; step rate = 6 ms, head unl = 480 ms
+		ld	a,3
+		ld	(c2),a		; head load = 4 ms, non DMA is true
+		ld	a,3
+		ld	b,a
+		call	setcommand	; specify
+
+		ld	a,4
+		ld	(cctrl_reg0),a	; geef drive A aan
+		call	res_drive	; en resetten
+		jr	c,geentc8566af	; mislukt ==> geen tc8566af
+ 
+		ld	a,5
+		ld	(cctrl_reg0),a	; geef drive B aan
+		call	res_drive	; en resetten
+		ld	a,0
+		jr	c,$+3		; C ==> geen b-drive
+		inc	a
+		ld	(bdrive),a	; 0=geen b-drive, 1=wel een b-drive
+
+endini:		call	drive_off
+
+		xor	a
+		ld	(lastdrive),a	; zeggen dat A-drive laatst actief was
+		ld	(kopa),a
+		ld	(kopb),a
+		ld	(ctrack_reg),a
+		ld	(sidea),a
+		ld	(sideb),a
+		ld	(cside_reg),a
+		inc	a
+		ld	(seca),a
+		ld	(secb),a
+		ld	(csector_reg),a
+		ret
+
+;	***********************
+
+init_part:
+; reset de drive(s) en de drive systeem variabelen
+; Hierna zijn de drives uit
+; in:  -
+; uit: -
+; wijzigt: AF,B
+		ld	a,4
+		ld	(cctrl_reg0),a	; geef drive A aan
+		call	res_drive	; en resetten
+		ld	a,5
+		ld	(cctrl_reg0),a	; geef drive B aan
+		ld	a,(bdrive)
+		or	a		; 0=geen b-drive, 1=wel
+		call	nz,res_drive	; en resetten
+		jr	endini		; en klaar met initialisatie
+
+;	***********************
+
+restore_all:
+; herstel de beginsituatie
+; in:  -
+; uit: -
+; wijzigt: AF,HL,BC,DE,DI,AF', slots, interrupt hooks
+;  De slots en int-hooks worden weer gezet zoals ze
+;  standaard onder BASIC staan, tevens wordt de cpu mode
+;  hersteld (alleen op de turbo r) en worden de drives uitgezet
+		ld	a,4
+		ld	(cctrl_reg0),a	; geef drive A aan
+		call	res_drive	; en resetten
+		ld	a,5
+		ld	(cctrl_reg0),a	; geen drive B aan
+		ld	a,(bdrive)
+		or	a		; 0=geen b-drive, 1=wel
+		call	nz,res_drive	; en resetten
+		call	drive_off
+		call	ready_drv	; set ready_line op drive
+
+		ld	a,(#fcc1)
+		ld	h,#40
+		call	#24
+		ld	a,(save_fd9f)
+		ld	(#fd9f),a
+		ld	a,(save_fd9a)
+		ld	(#fd9a),a
+		ld	a,(#2d)
+		cp	3
+		ret	c		; geen turbo-r
+		ld	a,(oldcpu)
+		or	#80
+		jp	#180		; herstel cpu mode
+
+;	***********************
+
+dubbel_enkel:
+;		controleren of de floppie enkel/dubbelzijdig is
+; in:  -
+; uit: A=0 => dubbel zijdig, A=1 => enkel zijdig
+;      dit komt tevens in (singles) te staan
+; wijzigt: F,B,DI
+		call	res_drive	; ga naar track 0 toe
+		call	dubbel_e1
+		call	res_drive
+		call	side0		; side 0 selecteren
+		ld	a,1
+		ld	(csector_reg),a	; sector 1 selecteren
+		ld	a,(singles)
+		ret
+
+dubbel_e1:	di
+		xor	a
+		ld	(singles),a
+		call	side1
+		ld	b,79		; 79 keer insteppen
+dubbel_e2:	push	bc
+		ld	de,admbuf
+		call	adm_ram		; adres mark & status naar ram
+		pop	bc
+		or	a
+		jr	z,dubbel_e3	; goed gegaan
+		ld	a,(singles)
+		inc	a
+		ld	(singles),a
+		cp	2
+		ret	z		; 2 kapotte tracks
+dubbel_e3:	call	step_in		; naar next track
+		djnz	dubbel_e2
+		xor	a		; als singles < 2 was, is er maar
+		ld	(singles),a	; 1 track kapot
+		ret
+
+admbuf:		ds	7,0
+
+;	***********************
+
+trackup:
+; ga naar volgend track, tot drive niet verder kan,
+; of tot (maxtrack)
+; in:  -
+; uit: -
+; wijzigt: AF,HL,AF'
+		ld	a,(ctrack_reg)
+		ld	hl,maxtrack
+		cp	(hl)
+		ret	nc
+		jr	strch
+
+;	***********************
+
+logtrackup:
+; ga naar volgend logisch track
+; ==> of van side 0 naar side 1, of trackup en
+;     van side 1 naar side 0
+; weer met controlle op maxtrack
+; in:  -
+; uit: -
+; wijzigt: AF,HL,AF'
+		ld	a,(ctrack_reg)
+		ld	hl,maxtrack
+		cp	(hl)
+		jr	c,dtrch
+		ld	a,(cside_reg)
+		or	a
+		ret	nz
+		jr	dtrch
+
+;	***********************
+
+trackdown:
+; ga track omlaag, tot track 0
+; in:  -
+; uit: -
+; wijzigt: AF,AF'
+		ld	a,(ctrack_reg)
+		or	a
+		ret	z
+		jr	strdown
+
+;	***********************
+
+logtrackdown:
+; ga logisch track omlaag
+; ==> of van side 1 naar side 0
+;     of track down en van side 0 naar side 1
+; in:  -
+; uit: -
+; wijzigt: AF,AF'
+		ld	a,(ctrack_reg)
+		or	a
+		jr	nz,dtrdown
+		ld	a,(cside_reg)
+		or	a
+		ret	z
+		jr	dtrdown
+
+;	***********************
+
+strch:
+; track verhogen (enkelzijdig), zonder kontrole op te hoog track nummer
+; in:  -
+; uit: -
+; wijzigt: AF,AF'
+		ld	a,1
+		ld	(csector_reg),a
+		jp	step_in
+
+;	***********************
+
+dtrch:
+; logisch track verhogen bij dubbelzijdig, zonder kontrole op te hoog track
+; in:  -
+; uit: -
+; wijzigt: AF,AF'
+		ld	a,1
+		ld	(csector_reg),a
+		ld	a,(cside_reg)
+		and	1
+		xor	1
+		ld	(cside_reg),a
+		ret	nz		; net kant 1 geselecteerd
+		jp	step_in
+
+;	***********************
+
+strdown:
+; track verlagen bij single side, geen controlle op te laag nummer
+; in:  -
+; uit: -
+; wijzigt: AF,AF'
+		ld	a,1
+		ld	(csector_reg),a
+		jp	step_out
+
+;	***********************
+
+dtrdown:
+; logisch track verlagen bij dubbelzijdig, zonder kontrole op te laag track
+; in:  -
+; uit: -
+; wijzigt: AF,AF'
+		ld	a,1
+		ld	(csector_reg),a
+		ld	a,(cside_reg)
+		and	1
+		xor	1
+		ld	(cside_reg),a
+		ret	z		; net kant 0 geselecteerd
+		jp	step_out
+
+;	***********************
+
+selecdra:
+; drive a selecteren
+; in:  -
+; uit: C als drive niet klaar is, NC als drive wel klaar
+; wijzigt: AF,B
+		ld	a,%00010100
+		jr	selecdr
+
+;	***********************
+
+selecdrb:
+; drive b selecteren en wachten tot drive electronica
+; volledig is geinitialiseerd
+; in:  -
+; uit: C als drive niet klaar is, NC als drive klaar of niet aanwezig is
+; wijzigt: AF,B
+; Ps. Controlle of de drive aanwezig is kan plaatsvinden via res_drive
+		ld	a,%00100101
+; routine loopt door in selecdr
+
+selecdr:	ld	(ctrl_reg0),a	; zet drive aan
+		ld	(cctrl_reg0),a
+		ld	a,#20
+		ld	(ctrl_reg1),a
+		ld	b,30		; maximaal 30*30ms wachten
+selecdr2:	push	bc
+		ld	a,4
+		ld	b,1
+		call	setcommand	; sense device
+		ld	a,(cctrl_reg0)
+		and	1
+		call	writedata	; hds instellen
+		call	readdata	; status 3
+		pop	bc
+		and	32
+		ret	nz		; FDD ready
+		call	wacht30ms
+		djnz	selecdr2
+		scf
+		ret
+
+;	***********************
+
+drive_off:
+; zet drive uit
+; in:  -
+; uit: -
+; wijzigt: -
+		push	af
+		ld	a,4
+		ld	(ctrl_reg0),a
+		ld	(cctrl_reg0),a
+		pop	af
+		ret
+
+;	***********************
+
+biterrprint:
+; print de goede foutmeldingen
+; in: HL wijst naar het begin van een tabel met 8 text pointers
+;     A-bits geven aan welke teksten moeten worden geprint
+;     bit 7 = 1  ==> print text 0
+;     bit 6 = 1  ==> print text 1
+;      |  | | |   |    |    |   |
+;     bit 0 = 1  ==> print text 7
+; uit: -
+; wijzigt: AF,HL,BC,EI
+; Deze routine reset tevens de drive controller, zodat nieuwe commando's
+; goed gaan
+		or	a
+		ret	z
+		ld	b,8
+biterrp2:	push	hl
+		ld	c,(hl)
+		inc	hl
+		ld	h,(hl)
+		ld	l,c		; hl wijst nu naar err_txt
+
+		rlca
+		push	af
+		call	c,printhl	; tekst uitprinten als bitje geset was
+		pop	af
+
+		pop	hl
+		inc	hl
+		inc	hl
+		djnz	biterrp2
+
+err_end:	ret			; er hoeft bij deze drive controller
+					; niets gereset te worden na een error
+
+;	***********************
+
+cursetwrt:
+; set vdp op schrijven naar namentabel, vanaf huidige
+; cursor positie
+; in:  -
+; uit: -
+; wijzigt: HL,AF,DI
+;  Dit gaat alleen goed in 80-koloms mode, waarbij
+;  de namentabel op adres 0 begint (standaard screen 0, width 80 situatie)
+		push	bc
+		push	de
+		call	cursaddr
+		call	#171
+		di
+		pop	de
+		pop	bc
+		ret
+
+;	***********************
+
+cursetrd:
+; set vdp op lezen uit namentabel, vanaf huidige
+; cursor positie
+; in:  -
+; uit: -
+; wijzigt: HL,AF,DI
+;  Dit gaat alleen goed in 80-koloms mode, waarbij
+;  de namentabel op adres 0 begint (standaard screen 0, width 80 situatie)
+		push	bc
+		push	de
+		call	cursaddr
+		call	#16e
+		di
+		pop	de
+		pop	bc
+		ret
+
+;	***********************
+
+cursaddr:
+; bereken adres in namentabel, voor huidige cursor positie
+; in:  -
+; uit: HL is vram adres
+; wijzigt: BC,DE,F
+;  Dit gaat alleen goed op screen 0, width 80,
+;  namentabel startadres = 0
+		ld	hl,(systemy)
+		ld	c,h		; h=x  => c=x
+		ld	h,0
+		ld	b,h		; b=0, h=0, l=y, c=x
+		dec	l
+		dec	c		; conversie van (1,1) naar (0,0)
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl		; *16
+		ld	e,l
+		ld	d,h
+		add	hl,hl
+		add	hl,hl		; *64
+		add	hl,de		; hl = y * 80
+		add	hl,bc		; hl = y * 80 + x
+		ret
+
+;	***********************
+
+antwoord:
+; wacht op toets en kijk of het een antw_yes of antw_no is, echo antw op scherm
+; in:  -
+; uit: A=0 ==> antw_no, A=1 ==> antw_yes
+; wijzigt: EI,F
+		push	hl
+antw2:		call	#9f
+		res	5,a		; kleine letters => grote letters
+		ld	hl,antw_yes
+		cp	(hl)
+		jr	z,antwj
+		inc	hl
+		cp	(hl)
+		jr	z,antwn
+		jr	antw2
+antwn:		call	#a2
+		xor	a
+		pop	hl
+		ret
+antwj:		call	#a2
+		ld	a,1
+		pop	hl
+		ret
+
+;	***********************
+
+reporttc:
+; print de tekst waar HL of DE naar wijst aan de hand
+; van de inhoud van fout
+; fout=0 => print hl (in dit geval is er wel een tc8566)
+; fout=1 => print de (in dat geval is er geen tc8566)
+; in: HL : tekst die hoort bij wel een tc8566
+;     DE : tekst die hoort bij geen tc8566
+; uit: -
+; wijzigt: AF,HL,EI ( en DE als geen tc8566 aanwezig is) 
+		ld	a,(fout)
+		or	a
+		jr	z,$+3
+		ex	de,hl
+
+; loop door in printhl
+; mag dus niks tussen komen
+;	***********************
+
+printhl:
+; print tekst waar hl naar wijst, als hl=0 dan print niks
+; De tekst moet worden afgesloten met een 0-byte
+; in:  HL = tekstpointer
+; uit: -
+; wijzigt: AF,HL,EI
+		ld	a,h
+		or	l
+		ret	z
+printhl2:	ld	a,(hl)
+		inc	hl
+		or	a
+		ret	z
+		call	#a2
+		jr	printhl2
+
+;	***********************
+
+printsp:
+; print tekst die na de aanroep van printsp staat, ze moet worden afgesloten
+; met een 0-byte
+; in:  -
+; uit: -
+; wijzigt: AF,EI,(SP) ( (sp) <== eerste adres na 0-byte)
+		ex	(sp),hl
+		call	printhl
+		ex	(sp),hl
+		ret
+
+;	***********************
+
+sel_drivea:
+; selecteer drive A
+; Als 2 drives, dan fysiek selecteren
+; Als 1 drive, dan tekst in HL afdrukken en op toets wachten
+; er wordt voor de veiligheid een kill key buf aangeroepen
+; in:  HL pointer naar tekst die moet worden afgedrukt
+;      bij 1-drive systeem (HL=0 ==> geen tekst)
+; uit: C als drive niet klaar is, NC als drive wel klaar
+; wijzigt: A,B,HL,DI,AF'
+		ld	a,(lastdrive)
+		or	a
+		jp	z,sel_daeind
+		ld	a,(bdrive)
+		or	a
+		jr	z,sel_dawissel
+		di
+		ld	a,(ctrack_reg)
+		ld	(kopb),a
+		ld	a,(csector_reg)
+		ld	(secb),a
+		ld	a,(cside_reg)
+		ld	(sideb),a
+
+		ld	a,(kopa)
+		ld	(ctrack_reg),a
+		ld	a,(seca)
+		ld	(csector_reg),a
+		ld	a,(sidea)
+		ld	(cside_reg),a
+		jr	sel_daeind
+
+sel_dawissel:	call	printhl
+		call	#156		; kill keybuff
+		call	#9f
+		di
+		ld	a,(ctrack_reg)
+		ld	(kopb),a
+		ld	a,(csector_reg)
+		ld	(secb),a
+		ld	a,(cside_reg)
+		ld	(sideb),a
+
+		call	selecdra	; drive aanzetten als hij uit stond
+		call	exe_command	; wacht tot FDC klaar met seeks
+
+		ld	a,(kopa)
+		call	seek_track
+		ld	a,(seca)
+		ld	(csector_reg),a
+		ld	a,(sidea)
+		ld	(cside_reg),a
+
+		xor	a
+		ld	(lastdrive),a
+		ret
+
+sel_daeind:	di
+		xor	a
+		ld	(lastdrive),a
+		jp	selecdra
+
+;	***********************
+
+sel_driveb:
+; selecteer drive B
+; Als 2 drives, dan fysiek selecteren
+; Als 1 drive, dan tekst in HL afdrukken en op toets wachten
+; er wordt voor de veiligheid een kill key buf aangeroepen
+; in:  HL pointer naar tekst die moet worden afgedrukt
+;      bij 1-drive systeem (HL=0 ==> niks afdrukken)
+; uit: C als drive niet klaar is, NC als drive wel klaar
+; wijzigt: A,B,HL,DI,AF'
+		ld	a,(lastdrive)
+		or	a
+		jp	nz,sel_dbeind
+		ld	a,(bdrive)
+		or	a
+		jr	z,sel_dbwissel
+		di
+		ld	a,(ctrack_reg)
+		ld	(kopa),a
+		ld	a,(csector_reg)
+		ld	(seca),a
+		ld	a,(cside_reg)
+		ld	(sidea),a
+
+		ld	a,(kopb)
+		ld	(ctrack_reg),a
+		ld	a,(secb)
+		ld	(csector_reg),a
+		ld	a,(sideb)
+		ld	(cside_reg),a
+
+		jr	sel_dbeind
+
+
+sel_dbwissel:	call	printhl
+		call	#156
+		call	#9f 
+		di
+		ld	a,(ctrack_reg)
+		ld	(kopa),a
+		ld	a,(csector_reg)
+		ld	(seca),a
+		ld	a,(cside_reg)
+		ld	(sidea),a
+		call	selecdra	; aanzetten als hij uit stond
+		call	exe_command
+		ld	a,(kopb)
+		call	seek_track	; kop op de oude positie zetten
+		ld	a,(secb)
+		ld	(csector_reg),a
+		ld	a,(sideb)
+		ld	(cside_reg),a
+		ld	a,1
+		ld	(lastdrive),a
+		ret
+
+sel_dbeind:	di
+		ld	a,1
+		ld	(lastdrive),a
+		ld	a,(bdrive)
+		or	a
+		jr	z,$+5
+		jp	selecdrb
+		jp	selecdra
+
+;	***********************
+
+step_in:
+; voer step in commando uit ==> kop naar volgend track
+; in:  -
+; uit: (ctrack_reg) is aangepast
+;      A = result status 0
+		ld	a,(ctrack_reg)
+		inc	a
+		ret	z
+		jr	seek_track
+
+;	***********************
+
+step_out:
+; voer step out commando uit ==> kop track terug
+; in:  -
+; uit: (ctrack_reg) is aangepast
+;      A = result status 0
+		ld	a,(ctrack_reg)
+ 		or	a
+		ret	z
+		dec	a
+
+;	***********************
+
+seek_track:
+; Ga naar het track toe
+; in:  A = track nummer
+; uit: (ctrack_reg) is aangepast
+;      A = result status 0
+		ld	(c2),a		; new track number
+		call	ready_fake	; negeer disk offline
+		ld	a,(cctrl_reg0)
+		and	1
+		ld	(c1),a		; drive select
+		push	bc
+		call	wacht1ms8	; 1.8 ms wachten
+		ld	a,15
+		ld	b,3
+		call	setcommand	; seek track
+		pop	bc
+		call	exe_command	; voer seek uit
+		jp	wacht16ms	; en wacht effe
+
+;	***********************
+
+res_drive:
+; reset de actieve drive (==> kop naar track 0)
+; in:  -
+; uit: C als kop track 0 niet heeft bereikt (drive is dan afwezig of kapot)
+;      NC als kop track 0 wel heeft bereikt
+; wijzigt: A
+		call	ready_fake	; negeer disk offline
+		ld	a,(cctrl_reg0)
+		and	1
+		ld	(c1),a		; drive select
+		call	exe_command	; wacht tot FDC klaar met seeks
+		push	bc
+		call	wacht1ms8	; 1.8 ms wachten
+		ld	a,7
+		ld	b,2
+		call	setcommand	; calibrate
+		call	exe_command	; wacht tot calibrate klaar is
+		call	wacht16ms	; wacht effe
+		pop	bc
+		and	16		; bit 4 = equipment check
+		ret	z		; gelukt => track 0 bereikt
+		scf
+		ret			; mislukt (drive niet aanwezig)
+
+;	***********************
+
+side0:
+; selecteer side 0
+; in:  -
+; uit: -
+; wijzigt: HL
+		ld	hl,cside_reg
+		res	0,(hl)
+		ret
+
+;	***********************
+
+side1:
+; selecteer side 1
+; in:  -
+; uit: -
+; wijzigt: HL
+		ld	hl,cside_reg
+		set	0,(hl)
+		ret
+
+;	***********************
+
+selec_sec:
+; selecteer sector
+; in:  A=sector
+; uit: -
+; wijzigt: -
+		ld	(csector_reg),a
+		ret
+
+;	***********************
+
+sec_vrm:
+; lees een sector naar vram
+; in: VDP op goede adres, C pointer naar vdp i/o poort
+; uit: DE=1025 - aantal gelezen bytes
+;      A=0 ==> geen fouten
+;      A<>0: bits zijn combinatie van status 1/2
+; wijzigt: HL,AF',DI
+		ld	a,#46		; read data command
+		ld	de,512
+		call	drv_vrm
+		ld	hl,1025-512
+		add	hl,de
+		ex	de,hl
+		ret
+
+;	***********************
+
+sec_ram:
+; lees sector naar ram
+; in: DE is ram adres 
+; uit: BC=1025 - aantal gelezen bytes
+;      DE=DE+aantal gelezen bytes
+;      A=0 ==> geen fouten
+;      A<>0: bits zijn combinatie van status 1/2
+; wijzigt: HL,DI
+		ld	a,#46
+		ld	bc,512
+		call	drv_ram
+		ld	hl,1025-512
+		add	hl,bc
+		ld_bc_hl
+		ret
+
+;	***********************
+
+trk_ram:
+; lees track naar ram
+; in: DE op source adres
+; uit:  BC=#1A00 - aantal gelezen bytes
+;       DE=DE+aantal gelezen bytes
+;       A: bits zijn status 1/2 mix
+; wijzigt: HL,AF',DI
+		ld	a,%00001000	; kan tc niet => geef not ready terug
+		ld	bc,#1a00	; dus ook niks ingelezen
+		scf
+		ret
+
+;	***********************
+
+adm_ram:
+; lees adres marker naar ram, achter adm komt nog status byte
+; in: DE is ram-adres
+; uit:  BC=8 - aantal gelezen bytes
+;       DE=DE+aantal gelezen bytes+1 (normaal : DE=DE+7)
+;       A=0 ==> geen fouten
+;       A<>0: combinatie van status 1 en status 2
+; wijzigt: HL,AF',DI
+		call	adm_ram2	; lees i.d. en result
+		ld	hl,r4
+		ld	bc,4
+		ldir			; zet (cyl, lhe, rec, nby) over
+		inc	de
+		inc	de		; skip CRC bytes
+		ld	bc,2		; # gelezen = 8-6 = 2
+		ld	(de),a		; flags
+		inc	de
+		ret
+
+adm_ram2:	di
+		call	ready_drv
+		ld	hl,rdwrend
+		push	hl		; klaar met lezen
+		ld	hl,wacht30ms
+		push	hl		; lees error opgetreden
+		ld	a,#4a		; rd id
+		ld	b,1
+		call	setcommand	; stel rd id commando in
+		call	sethds		; stuur HDS naar drive controller
+		ld	hl,stat_reg
+		ld	bc,#0108
+		jp	drv_ram2	; 2-de entry van drv_ram
+
+;	***********************
+
+drv_ram:
+; lees naar ram
+; in:  A = tc8566 commando
+;      DE = ram addr. 
+;      BC = # te lezen bytes
+; uit: A = status (combinatie van status 1 en status 2)
+;      DE = DE + # gelezen bytes
+;      BC = BC - # gelezen bytes
+; wijzigt: HL,AF',DI
+		di
+		call	ready_drv
+		ld	hl,rdwrend
+		push	hl
+		ld	hl,wacht30ms
+		push	hl
+		inc	c
+		dec	c
+		jr	z,$+3
+		inc	b		; djnz doet eerst dec b
+		ld	hl,stat_reg
+		call	setrdwrsec	; installeer sector read/write
+drv_ram2:	ld	a,(hl)		; 8
+		add	a,a		; 5,  check request for master
+		jp	nc,drv_ram2	; 11, controller nog niet uitlezen
+		add	a,a		; 5,  check non DMA mode
+		ret	p		; 6,  error opgetreden
+		ld	a,(data_reg)	; 14, max req. = 5+11+8+5+11+5+6 = 51t
+		ld	(de),a		; 8            = 14 uS (op z80)
+		inc	de		; 7
+		dec	c		; 5
+		jp	nz,drv_ram2	; 11
+		djnz	drv_ram2	; 14 ==> min. lustijd = 79 (+14)
+		pop	hl
+		pop	hl	
+		jp	rdwrend
+
+;	***********************
+
+drv_vrm:
+; drive ==> vram
+; in:  A = drive commando
+;      C = vdp i/o poort
+;      DE = maximum aantal bytes
+; uit: A = status byte (1/2 mix)
+;      DE=DE-aantal gelezen bytes
+; wijzigt: HL, AF',DI
+		di
+		call	ready_drv
+		ld	hl,rdwrend
+		push	hl
+		ld	hl,wacht30ms
+		push	hl
+		inc	e
+		dec	e
+		jr	z,$+3
+		inc	d		; want 2-de lus doet eerst dec d
+		ld	hl,stat_reg
+		call	setrdwrsec	; installeer sector read/write
+drv_vrm2:	ld	a,(hl)
+		add	a,a		; check request for master
+		jp	nc,drv_vrm2	; controller nog niet uitlezen
+		add	a,a		; check non DMA mode
+		ret	p		; error opgetreden
+		ld	a,(data_reg)
+		out	(c),a
+		dec	e		; tel byte af
+		jp	nz,drv_vrm2
+		dec	d
+		jp	nz,drv_vrm2
+		pop	hl
+		pop	hl
+		jp	rdwrend
+
+;	***********************
+
+vrm_sec:
+; schrijf sector uit vram
+; in: VDP op goede adres, C pointer naar vdp i/o poort
+; uit: DE=1025 - aantal geschreven bytes
+;      A = status (1/2 mix)
+; wijzigt: HL,AF',DI
+		ld	a,#45
+		ld	de,512
+		call	vrm_drv
+		ld	hl,1025
+		add	hl,de
+		ex	de,hl
+		ret
+
+;	***********************
+
+ram_sec:
+; schrijf sector uit ram
+; in: DE moet op source adres staan
+; uit: BC=1025 - aantal geschreven bytes
+;      DE=DE + aantal geschreven bytes
+;      A<>0: bits zijn van type 2 status
+; wijzigt: HL,AF',DI
+		ld	a,#45
+		ld	bc,512
+		call	ram_drv
+		ld	hl,1025
+		add	hl,bc
+		ld_bc_hl
+		ret
+
+;	***********************
+
+bad_track:	pop	de		; verkeerd formaat !! => dit kan
+		ld	a,%00001000	; tc8566af niet aan
+		ld	bc,#1a00	; geef nog een not ready terug
+		ret
+
+ram_trk:
+; schrijf track vanuit ram naar drive
+; in: DE is adres, data opgesteld in wd2793 formaat
+;                  voor IBM compatible track opbouw
+; uit: BC=#1A00 - aantal bytes
+;      DE=DE + aantal bytes
+;      A = status
+; wijzigt: HL,AF',DI
+		push	de
+		ex	de,hl		; HL = start addr.
+		ld	e,0		; tel # sectors
+		ld	bc,#1a00
+		call	findsec		; zoek en analyseer sector
+		jr	c,bad_track	; sector niet gevonden/foute id info
+ram_trk2:	call	findsec
+		jr	z,ram_trk2a	; data op
+		jr	c,bad_track	; fout in sector/sector id
+		jr	ram_trk2	; next sector zoeken
+ram_trk2a:	ld	a,e		; # sectoren
+		ld	(c3),a		; sla op voor controller
+
+		pop	hl
+		ld	a,#fe
+		ld	bc,#1a00
+		cpir			; zoek sector ID
+		push	hl		; pos 1ste ID
+		push	bc		; #resterende bytes
+		inc	hl
+		inc	hl
+		inc	hl
+		ld	a,(hl)		; sector length kode
+		ld	(c2),a
+		call	lk_lbyte	; DE = lengte van lengte kode A
+		ld	a,#fb
+		cpir			; zoek sector data start
+		ld	a,(hl)		; inhoud data sector
+		ld	(c5),a
+		add	hl,de		; HL = CRC generate position
+		inc	hl		; HL = 1ste byte gap 3
+		ld_de_hl
+		xor	a
+		cpir			; zoek sync data
+		scf
+		sbc	hl,de		; HL = length of gap 3
+		ld	a,l
+		inc	h
+		dec	h		; MSB = 0 ??
+		jr	z,$+4		; ja => A = L
+		ld	a,255		; nee => neem 255 (rest is gap4)
+		ld	(c4),a		; sla gap length op
+
+		pop	bc		; # nog resterende bytes
+		pop	de		; pos. sector ID
+
+		exx
+		push	bc		; onthoud BC'
+		exx
+		call	ram_drv2b	; save track data
+		exx
+		pop	bc		; herstel BC'
+		exx
+		ret
+
+ram_drv2b:	di
+		call	ready_drv
+		ld	hl,rdwrend
+		push	hl		; klaar met schrijven
+		ld	hl,wacht30ms
+		push	hl		; error opgetreden
+		push	bc
+		ld	hl,stat_reg
+		ld	a,#4d		; format
+		ld	b,1
+		call	setcommand	; stel format commando in
+		pop	bc
+		call	sethds		; stuur HDS naar drive controller
+		ld	a,(c2)
+		call	writedata
+		ld	a,(c3)
+		exx
+		ld	c,a		; C' = # sectors
+		call	writedata
+		ld	a,(c4)
+		call	writedata
+		ld	a,(c5)
+		call	writedata
+ram_trk3:	ld	b,4		; B' = #bytes in de ID
+ram_trk4:	exx			; normale set terug
+ram_trk5:	ld	a,(hl)		; er zijn 4 ID bytes te schrijven:
+		add	a,a		; Cylinder, Head, Track, Length kode
+		jp	nc,ram_trk5
+		add	a,a
+		ret	p
+		ld	a,(de)
+		ld	(data_reg),a
+		inc	de
+		dec	bc
+		exx			; pak alternatieve set
+		djnz	ram_trk4
+; terwijl de FDC de sector schrijft kan de z80/r800 de sector data skippen
+		exx			; normale set terug
+		ex	de,hl		; HL = crc pos.
+		call	lk_lbyte	; DE = lengte sec. (A was nog lengte)
+		ld	a,#fb
+		cpir			; HL = 1ste byte sector
+		add	hl,de		; HL = crc pos. na sector
+		call	skipsec_count	; BC = BC-DE
+		ld	a,#fe
+		cpir			; HL = next i.d.
+		ex	de,hl		; DE = next i.d.
+		ld	hl,stat_reg
+		exx			; pak alternatieve set
+		dec	c
+		jp	nz,ram_trk3	; en schrijf next sector
+		exx			; normale set terug
+ram_trk6:	ld	a,(hl)
+		bit	5,a
+		jp	nz,ram_trk6	; wacht tot command termination
+		pop	hl
+		pop	hl
+		jp	rdwrend
+
+findsec:
+; zoek en analyseer sector
+; in: HL = huidige pos. in geheugen
+;     BC = # resterende databytes
+;      E = # sectors tot nu gevonden
+; uit:  C,  Z als sectors op
+;       C, NZ als fout in sector
+;      NC, NZ als sector geanalyseerd, HL = volgende pos. in geheugen
+;      E = E+1
+		ld	a,#fe		; ID adres mark
+		call	zoek_id		; zoek ID mark
+		ret	c		; niet gevonden/fout in preID
+		inc	hl		; skip track nummer
+		ld	a,(hl)		; side
+		and	%11111110
+		jr	nz,findserr	; error
+		inc	hl
+		inc	hl		; skip sector nummer
+		ld	a,(hl)		; sector size kode
+		cp	4
+		ld	d,a
+		jr	nc,findserr	; foute size
+		inc	hl
+		ld	a,(hl)		; generate CRC kode
+		cp	#f7
+		jr	nz,findserr
+		push	hl
+		ld_hl_bc
+		ld	bc,-5		; tel 1 teveel eraf => NC als
+		add	hl,bc		; BC = 0..4 (en C als BC > 4)
+		inc	hl		; compenseer 1 teveel
+		ld_bc_hl
+		pop	hl
+		jr	nc,findserr	; BC op
+		ld	a,#fb
+		call	zoek_id		; zoek data id
+		jr	c,findserr
+		push	de		; onthoud # sectors tot nu
+		ld	a,d		; sector size kode
+		call	lk_lbyte	; DE = sector size
+		add	hl,de		; HL = pos. na sector
+		ld	a,(hl)
+		cp	#f7		; moet generate CRC kode staan
+		jr	nz,zoek_iderr	; error teruggeven (en herstel stack)
+		call	skipsec_count	; BC = BC-sectorlengte
+		pop	de
+		jr	c,findserr	; op (ook Z heeft een C opgelevert)
+		inc	e		; weer 1 sector gehad
+		ret			; E=E+1, NC, NZ
+
+skipsec_count:	push	hl		; BC = BC-DE, geef ook C-flg als
+		ld_hl_bc		; BC hierna 0 is !!
+		scf			; tel 1 teveel eraf
+		sbc	hl,de		; skip sector count
+		inc	hl		; compenseer 1 teveel
+		ld_bc_hl
+		pop	hl
+		ret
+
+zoek_id:	push	hl		; huidige pos.
+		cpir
+		jr	z,zoek_id2	; ID gevonden
+		pop	hl
+		xor	a
+		scf
+		ret			; niet gevonden => C,Z
+zoek_id2:	dec	hl		; HL = ID pos.
+		dec	hl		; HL = preID byte 3
+		ld	a,#f5		; voor de ID moeten 3 F5's staan
+		cp	(hl)
+		jr	nz,zoek_iderr	; fout
+		dec	hl
+		cp	(hl)
+		jr	nz,zoek_iderr
+		dec	hl
+		cp	(hl)
+		jr	nz,zoek_iderr
+		ex	de,hl		; DE = pos. 1ste byte, HL = oude DE
+		ex	(sp),hl		; HL = strt pos, (SP) = oude DE
+		scf
+		sbc	hl,de		; strt. pos - (pos. 1ste byte + 1)
+		jr	nc,zoek_iderr	; strt. pos > pos. 1ste byte => NC
+		ld	hl,4
+		add	hl,de		; HL = 1ste byte na id
+		xor	a
+		inc	a		; ID gevonden en preID klopt
+		pop	de		; herstel DE
+		ret		
+
+zoek_iderr:	pop	hl		; herstel stack
+findserr:	xor	a		; error ==> C,NZ
+		sub	1
+		ret
+
+lk_lbyte:	push	hl
+		ld	hl,64
+		inc	a		; 0..3 => 1..4
+lk_lb2:		add	hl,hl		; 1=>128, 2=>256, 3=>512, 4=>1024
+		dec	a
+		jr	nz,lk_lb2	; HL = sector length in # bytes
+		ex	de,hl		; DE = sector length in # bytes
+		pop	hl
+		ret
+
+;	***********************
+
+ram_drv:
+; ram naar drive
+; in:  A =drive commando
+;      DE=source adres
+;      BC=maximum aantal bytes
+; uit: BC=BC - aantal geschreven bytes
+;      DE=DE + aantal geschreven bytes
+;      A = status
+; wijzigt: HL,AF',DI
+		di
+		call	ready_drv
+		ld	hl,rdwrend
+		push	hl
+		ld	hl,wacht30ms
+		push	hl
+		inc	c
+		dec	c
+		jr	z,$+3
+		inc	b
+		ld	hl,stat_reg
+		call	setrdwrsec	; installeer sector read/write
+ram_drv2:	ld	a,(hl)
+		add	a,a		; check request for master
+		jp	nc,ram_drv2	; controller nog niet uitlezen
+		add	a,a		; check non DMA mode
+		ret	p		; error opgetreden
+		ld	a,(de)
+		ld	(data_reg),a
+		inc	de
+		dec	c
+		jp	nz,ram_drv2
+		djnz	ram_drv2
+		pop	hl
+		pop	hl
+		jp	rdwrend
+
+;	***********************
+
+vrm_drv:
+; vram naar drive
+; in:  A   = drive commando
+;      VDP = goede adres
+;      C   = vdp i/o poort
+;      DE  = maximum aantal bytes
+; uit: DE=DE - aantal geschreven bytes
+;      A = status
+; wijzigt: HL,AF',DI
+		di
+		call	ready_drv
+		ld	hl,rdwrend
+		push	hl
+		ld	hl,wacht30ms
+		push	hl
+		inc	e
+		dec	e
+		jr	z,$+3
+		inc	d
+		ld	hl,stat_reg
+		call	setrdwrsec	; installeer sector read/write
+vrm_drv2:	ld	a,(hl)
+		add	a,a		; check request for master
+		jp	nc,vrm_drv2	; controller nog niet uitlezen
+		add	a,a		; check non DMA mode
+		ret	p		; error opgetreden
+		in	a,(c)
+		ld	(data_reg),a
+		dec	e		; tel byte af
+		jp	nz,vrm_drv2
+		dec	d
+		jp	nz,vrm_drv2
+		pop	hl
+		pop	hl
+
+;	***********************
+
+rdwrend:
+; einde van read/write commando:
+; reset terminal count en haal status op
+; reken status om naar 1 gecombineer de status flag voor
+; 'type 2/3' foutmeldingen
+; uit:  A = status (0 = geen error, rest is wel error)
+;       Z-flg = no error, NZ = error
+; verandert: HL
+		call	setrestc	; reset/set/reset terminal count
+		call	getresult	; haal result bytes op
+		ld	a,(r1)
+		and	#c8		; check IC en NOT READY
+		ret	z		; ze moeten 0 zijn
+		and	8
+		jr	nz,rdendnotr	; FDD not ready error
+		ld	a,(r2)		; status 1 (want lees/schrijf fout)
+		and	%10110111	; bit 6 en 3 hebben geen betekenis
+		ld	l,a
+		ld	a,(r3)
+		and	%01000000	; selecteer control mark
+		or	l		; maak samengestelde fout
+		ret
+rdendnotr:	ld	a,%00001000	; gebruik bit 3 om not ready te geven
+		ret
+
+;	***********************
+
+setrestc:
+; set/reset terminal count signal
+; verandert: A
+		ld	a,2
+		ld	(ctrl_reg1),a	; reset terminal count
+		inc	a
+		ld	(ctrl_reg1),a	; set terminal count
+		nop
+		dec	a
+		ld	(ctrl_reg1),a
+		ret
+
+;	***********************
+
+getresult:
+; haal resultdata op na
+; command executie
+; uit: R1..R8 goed ingevuld
+; verandert: AF
+		push	hl		; haal result data op na commando
+		call	getr2
+		pop	hl
+		ret
+getr2:		ld	hl,r1
+getr3:		call	readdata
+		ret	p		; FDC wil weer geschreven worden
+		ld	(hl),a		; sla status op
+		inc	hl
+		jr	getr3
+
+;	***********************
+
+setrdwrsec:
+; initialiseer sector read/write
+; in: A = tc8566af commando
+; uit: C1..C8 zijn gevuld met hds,cyl,lhe,rec,nby,eot,gpl & dtl
+; verandert: AF
+		push	bc
+		ld	b,1
+		call	setcommand	; geef goede leescommando
+		pop	bc
+		call	sethds		; selecteer head/drive
+		ld	a,(ctrack_reg)
+		call	writedata	; track
+		ld	a,(cside_reg)
+		call	writedata	; head
+		ld	a,(csector_reg)
+		call	writedata	; sector
+		ld	a,2
+		call	writedata	; sector size
+		ld	a,9
+		call	writedata	; end of track
+		ld	a,#50
+		call	writedata	; gap 3 length
+		ld	a,#ff
+		jp	writedata	; data length (niet relevant)
+
+;	***********************
+
+sethds:
+; zet head en drive naar drive controller
+; verandert: A
+		ld	a,(cside_reg)
+		or	a
+		ld	a,(cctrl_reg0)
+		jr	z,sethds2
+		or	4		; side 1
+		and	7
+		jr	sethds3
+sethds2:	and	3		; side 0
+sethds3:	jp	writedata	; en stuur HDS naar controler toe
+
+;	***********************
+
+set_command:
+; wd2793 bios commando instellen
+; kan niet => doe niks
+		ret
+
+;	***********************
+
+exe_command:
+; wacht tot FDC klaar is met type I (seek track/callibate) commando
+; in:  -
+; uit: (ctrack_reg) is aangepast als seek bezig was
+;      A = result status 0 als seek bezig was
+; wijzigt: AF
+		call	wachtfdc	; wacht tot FDC klaar is
+		and	15
+		ret	z		; geen seek bezig
+		push	bc
+		ld	a,8
+		ld	b,1
+		call	setcommand	; sense interrupt status
+		call	readdata	; A = status 0
+		ld	b,a
+		call	readdata	; present cylinder number
+		ld	(ctrack_reg),a
+		ld	a,b
+		bit	5,a
+		pop	bc
+		jr	z,exe_command	; nog bezig met verplaatsen
+		ret
+
+;	***********************
+
+wachtfdc:
+; wacht tot tc8566af klaar is met commando
+; uit: A = main status
+		ld	a,(stat_reg)
+		bit	4,a
+		jr	nz,wachtfdc
+		ret
+
+;	***********************
+
+setcommand:
+; stel TC8566AF commando in
+; in:  A = commando
+;      B = # te sturen hulp bytes (inclusief commando byte)
+; uit: B = 0
+; verandert: A, DI
+		di
+		push	hl
+		ld	hl,command
+		ld	(hl),a		; stel commando in
+		call	wachtfdc	; wacht tot FDC klaar is
+setc2:		ld	a,(hl)
+		call	writedata
+		inc	hl
+		djnz	setc2
+		pop	hl
+		ret
+
+;	***********************
+
+writedata:
+; schrijf waarde naar tc8566af data register
+; wacht eerst op request for master
+; schrijf alleen als data not input
+; in: A = data
+; verandert: -
+		push	af
+writed2:	ld	a,(stat_reg)
+		add	a,a
+		jr	nc,writed2	; nog niet klaar om te ontvangen
+		jp	m,writedend	; FDC wil gelezen worden
+		pop	af
+		ld	(data_reg),a	; stuur data
+		ret
+writedend:	pop	af
+		ret
+
+;	***********************
+
+readdata:
+; lees waarde uit tc8566af data register
+; wacht eerst op request for master
+; lees alleen als data output
+; uit: A = data
+;      P-flg = FDC niet uitgelezen
+;      M-flg = FDC wel uitgelezen
+; verandert: -
+		ld	a,(stat_reg)
+		add	a,a
+		jr	nc,readdata
+		ret	p		; FDC wil geschreven worden
+		ld	a,(data_reg)
+		ret
+
+;	***********************
+
+ready_fake:
+; drive ready line wordt gefaked (continue op true)
+; verandert: AF
+		ld	a,#30
+		ld	(ctrl_reg1),a
+		ret
+
+;	***********************
+
+ready_drv:
+; drive ready line wordt aan drive gekoppeld
+; verandert: AF'
+		ex	af,af'
+		ld	a,#20
+		ld	(ctrl_reg1),a
+		ex	af,af'
+		ret
+
+command:	db	0		; tc8566af commando
+c1:		db	0		; hulp commando registers
+c2:		db	0
+c3:		db	0
+c4:		db	0
+c5:		db	0
+c6:		db	0
+c7:		db	0
+c8:		db	0
+
+r1:		db	254		; result registers
+r2:		db	254
+r3:		db	254
+r4:		db	254
+r5:		db	254
+r6:		db	254
+r7:		db	254
+
+;	***********************
+
+
+wacht1ms8:
+; 1.8 ms wachten
+; in:  -
+; uit: -
+; wijzigt: -
+		push	hl
+		push	bc
+		ld	hl,214		; 214*8.4e-6 = 1.8ms (z80 tijd)
+		ld	bc,459		; 459*3.9e-6 = 1.8ms (r800 tijd)
+		jr	wachtms
+
+wacht16ms:
+; 16 ms wachten
+; in:  -
+; uit: -
+; wijzigt: -
+		push	hl
+		push	bc
+		ld	hl,1907		; 1785*8.4e-6 = 16ms (z80 tijd)
+		ld	bc,4086		; 4086*3.9e-6 = 16ms (r800 tijd)
+		jr	wachtms
+
+wacht30ms:
+; 30 ms wachten
+; in:  -
+; uit: -
+; wijzigt: -
+		push	hl
+		push	bc
+		ld	hl,3570		; 3570*8.4e-6 = 30ms (z80 tijd)
+		ld	bc,7650		; 7650*3.9e-6 = 30ms (r800 tijd)
+
+wachtms:	push	de
+		push	af
+
+		ld	a,(#2d)
+		cp	3
+		jr	nc,wmstr
+wmsz80l:	dec	hl		; 7
+		ld	a,h		; 5
+		or	l		; 5
+		jr	nz,wmsz80l	; 13 => 30 cycli => 8.4e-6 seconden
+		jr	wmsend
+
+wmstr:		push	bc		; onthoud maximum wachttijd
+		call	inpe6		; HL = 16 bits teller op #e6
+		ex	de,hl		; DE = startwaarde teller
+		pop	bc
+w30mstr2:	push	bc
+		call	inpe6		; HL = huidige waarde
+		sbc	hl,de		; HL = teller vermeerdering
+		pop	bc
+		or	a
+		sbc	hl,bc		; vergelijk met maximum waarde
+		jr	c,w30mstr2	; nog niet met BC toegenomen
+wmsend:		pop	af
+		pop	de
+		pop	bc
+		pop	hl
+		ret
+
+
+; *************************************
+; * lees 16 bits teller op i/o #e6 uit
+; * in:  -
+; * uit: HL = 16 bits teller
+; *      A  = MSB 16 bits teller
+; *      C  = #e6
+
+inpe6:		ld	c,#e7
+		in	h,(c)		; H = MSB 16-bits teller
+		dec	c
+		in	l,(c)		; L = LSB 16-bits teller
+		in	a,(#e7)
+		cp	h		; is msb verandert tijdens lezen lsb ?
+		ret	z		; nee => HL is goede waarde
+		jr	inpe6		; ja => lees opnieuw uit
+
+;	***********************
+
+getversion:
+; haal versie nummer van driver op
+; in:  -
+; uit: H = type drive controller
+;          0 = wd2793
+;          1 = wd1793
+;          2 = philips pc-msx emulatie kaart
+;          3 = tc8566af op addr #7ff2 (turbo-r: pak r800)
+;          4 = tc8566af op addr #7ff2 (turbo-r: pak z80)
+;          5 = tc8566af op addr #7ff8 (sanyo wavy 70 fd)
+;      L = versie nummer in BCD formaat. Dit is versie 1.0 => L = #10 
+		ld	hl,#0510
+		ret
+
+;	***********************
+
+; doe niks (was wd2793 registers naar geheugen kopie‰n zetten)
+; in:  -
+; uit: -
+; wijzigt: -
+reg_copy:	ret
+
+;	***********************
+
+; doe niks (was de geheugen kopie‰n in de wd2793 registers zetten)
+; in:  -
+; uit: -
+; wijzigt: -
+copy_reg:	ret
+
+;	***********************
+
+errtxt1:;		pointers naar standaard standaard drive foutmeldingen
+ defw errbit7;		in juiste formaat voor biterrprint
+ defw errbit6;		Deze tabel hoort bij type I commando's
+ defw errbit51
+ defw errbit41
+ defw errbit3
+ defw errbit21
+ defw errbit11
+ defw errbit0
+
+errtxt2:;		pointer tabel voor foutmeldingen bij type II commando's
+ defw errbit7
+ defw errbit6
+ defw errbit52
+ defw errbit42
+ defw errbit3
+ defw errbit22
+ defw errbit12
+ defw errbit0
+
+errtxt3:;		pointer tabel voor foutmeldingen bij type III commando's
+ defw errbit7
+ defw errbit6
+ defw errbit52
+ defw errbit42
+ defw errbit3
+ defw errbit22
+ defw errbit12
+ defw errbit0
+
+;	***********************
+;	* De standaard foutmeldingen
+
+errbit7:	db "End of cylinder  ",13,10,0
+errbit6:	db "Deleted data mark",13,10,0
+errbit51:	db "Head loaded      ",13,10,0
+errbit52:	db "Crc error        ",13,10,0
+errbit41:	db "Seek error       ",13,10,0
+errbit42:	db "Lost data        ",13,10,0
+errbit3:	db "Drive not ready  ",13,10,0
+errbit21:	db "Track 0          ",13,10,0
+errbit22:	db "Sector not found ",13,10,0
+errbit11:	db "Index pulse      ",13,10,0
+errbit12:	db "Write protected  ",13,10,0
+errbit0:	db "Missing addr mark",13,10,0
+*l+
+eind:
+

@@ -1,0 +1,788 @@
+; Format utility 1.0
+; voor gebruikt met fastc30.l00: niet assembleren op #ca19..#d226
+; (driver addr = #ca19)
+; voor gebruik met dr-bio3.com: assembleren op #ca00
+; (driver addr = #c000)
+
+form_flg:	equ	1=1	; true  ==> formatteren
+copy_flg:	equ	1=1	; true  ==> copy boot sector and fat
+drvoffs:	equ	#ca19	; offset of drive jump table
+
+*l-
+dos:		equ	1=0		; true als dos programma
+		if	dos		; aanroep adres voor bdos call's
+bdosaddr:	 equ	5
+		else
+begin:		 equ	#c437		; begin addr als geen dos
+bdosaddr:	 equ 	#f37d
+		endif
+
+add_hl_a:	MACRO
+		add	a,l
+		ld	l,a
+		jr	nc,$+3
+		inc	h
+		ENDM
+
+locate:		MACRO	@x,@y		; escape code voor locate
+		db	27,"Y",@y+31,@x+31
+		ENDM
+
+
+MSX1:		MACRO	@adres		; roep routine in MSX-1 rom bios aan
+		if	dos
+		  ld	ix,@adres
+		  call	domsx1		; onder dos ==> via interslot call
+		else
+		  call	@adres		; onder (disk) basic ==> via directe
+		endif			; call
+		ENDM
+
+JMSX1:		MACRO	@adres		; roep routine in MSX-1 rom bios aan
+		if	dos
+		  ld	ix,@adres
+		  jp	domsx1		; onder dos ==> via interslot call
+		else
+		  jp	@adres		; onder (disk) basic ==> via directe
+		endif			; call
+		ENDM
+
+MSX2:		MACRO	@adres		; roep routine in MSX-2 subrom aan
+		ld	ix,@adres
+		call	domsx2
+		ENDM
+
+JMSX2:		MACRO	@adres		; roep routine in MSX-2 subrom aan
+		ld	ix,@adres
+		jp	domsx2
+		ENDM
+
+BDOS:		MACRO	@functie	; roep bdos functie @functie aan
+		ld	c,@functie
+		call	bdosaddr	; dos ==> 5, disk basic ==> #f37d
+		ENDM
+
+JBDOS:		MACRO	@functie	; roep bdos functie @functie aan
+		ld	c,@functie
+		jp	bdosaddr	; dos ==> 5, disk basic ==> #f37d
+		ENDM
+
+FCB:		MACRO	@nr,@drive,@naam,@extensie 
+		db	@drive
+fcbname@nr:	db	"@naam"
+		ds	8 + fcbname@nr - $, ' ' ; aanvullen tot 8 letters
+fcbext@nr:	db	"@extensie"
+		ds	3 + fcbext@nr - $, ' '  ; aanvullen tot 3 letters
+		dw	0		; current blok
+reclen@nr:	dw	1
+fillen@nr:	dw	0		; file size
+		ds	15,0		; datum, tijd, device ID + directory
+					; allocation, first & last cluster,
+					; last cluster rel., current record
+recnum@nr:	dw	0		; random record
+		dw	0		; 2e helft random record 
+		ENDM
+
+setdma:		equ	#1a		; set transfer adress (DE)
+open:		equ	#0f		; open file, DE = addr FCB
+create:		equ	#16		; create file, DE = addr FCB
+close:		equ	#10		; close file, DE = addr FCB
+readrec:	equ	#27		; read record, DE = FCB, HL = # records
+writerec:	equ	#26		; write record, DE = FCB, HL = # rec.
+
+fcbpar1:	equ	#5c		; fcb eerste argument
+fcbpar2:	equ	#6c		; fcb tweede argument
+
+dppage:		equ	#faf5		; display page
+acpage:		equ	#faf6		; active page
+logopr:		equ	#fb02		; logische vdp operatie
+atrbyt:		equ	#f3f2		; vdp kleur (lijn,pset,etc.)
+
+systemy:	equ	#f3dc
+systemx:	equ	#f3dd
+
+		if	.not. dos
+vdpaddr:	 equ	7
+domsx2:		 equ	#15f
+
+		 db	#fe
+		 dw	begin
+		 dw	eind
+		 dw	begin
+
+		 org	begin
+		else
+		 ld	hl,7
+		 ld	a,(#fcc1)
+		 call	#c		; rdslot
+		 ld	(vdpaddr),a
+		 jr	start
+
+vdpaddr:	 db	#98
+domsx1:		 ld	iy,(#fcc0)
+		 jp	#1c
+domsx2:		 ld	iy,(#faf7)
+		 jp	#1c
+start:
+		endif
+*l+
+
+gap3:		equ	50		; grootte van gap3
+
+; **************************************
+; * echte begin van de code
+
+		ld	(savstk),sp
+		call	init_all	; init. drives
+		call	get_sides	; vraag naar sides
+		call	makedisk	; maak de disk(en) aan
+		jp	restore_all
+
+; **************************************
+; * vraag of er dubbel dan wel enkelzijdig gemaakt
+; * moet worden
+get_sides:	call	iniscr0
+		call	printsp
+		db	12,'Format utility version 1.0. Copyright (c) 1995 XelaSoft',13,10,10
+		db	'1) Format only side 0',13,10
+		db	'2) Format only side 1',13,10
+		db	'3) Format both sides',13,10,10
+		db	'Please enter the number of your choice: ',0
+		MSX1	#156
+getsi2:		MSX1	#9f		; wacht op een toets
+		cp	'1'
+		jr	c,getsi2
+		cp	'4'
+		jr	nc,getsi2
+		MSX1	#a2		; druk keuze af
+		sub	'1'
+		ld	(sides_flg),a	; enkel of dubbelzijdig
+		call	printsp
+		db	13,10,'Press any key to start the format process',0
+		MSX1	#156
+		MSX1	#9f
+		call	printsp
+		db	13,10,0
+		ret
+
+; **************************************
+; * pak screen 0 met de volgende instellingen:
+; *  - width 80, 24 lines, key off, click off
+iniscr0:	ld	a,80
+		ld	(#f3ae),a	; width 80
+		ld	a,24
+		ld	(#f3b1),a	; 24 lines
+		xor	a
+		ld	(#f3db),a	; click off
+		ld	(#f3de),a	; key off
+		JMSX1	#6c		; screen 0
+
+; **************************************
+; * maak de disken aan
+makedisk:	ld	de,#9000
+		BDOS	setdma		; dmabuf op #9000
+
+		BDOS	#6f		; get dos version number
+		ld	e,0
+		ld	a,b
+		cp	2
+		jr	c,nodos2	; b < 2 ==> geen dos 2
+		dec	e
+nodos2:		ld	a,e
+		ld	(dos2),a	; 0 => geen dos 2, 255 => wel dos 2
+		or	a
+		jr	z,no_flush	; geen dos2 => geen flush nodig
+		ld	b,1
+		ld	d,#ff
+		BDOS	#5f		; flush and invalidate disk buffers
+
+no_flush:	call	ask_disk	; vraag om disk, reset drive, etc.
+		ret	c		; ESC pressed
+
+; ------------------------
+;		ld	hl,track_nums	; afwijkende track nummers
+;		ld	de,sec_nums	; afwijkende sector nummeringen
+; ------------------------
+		ld	a,(sides_flg)
+		cp	2
+		jr	z,cr_dubbel
+
+; *** formatteer kant 0 of 1
+		if	form_flg
+		 ld	b,80		; 80 tracks
+form_ss:	 push	bc
+		 call	form_track	; formatteer het track
+		 push	hl
+		 call	trackup		; naar volgend track
+		 pop	hl
+		 pop	bc
+		 djnz	form_ss
+		endif
+
+		if	copy_flg
+		 ld	a,(sides_flg)
+		 or	a		; which side ? 0 or 1 ?
+		 jr	nz,form_end	; 1 => do not overwrite bootsector, etc
+		 ld	hl,single_info	; data specific to single sided disks
+		 call	save_ssds	; make bootsector, fat, etc in memory
+		 ld	b,12
+		 ld	de,#9000
+save_ss:	 push	bc
+		 call	ramesec		; schrijf sector met error handling
+		 ld	hl,sector_reg
+		 inc	(hl)
+		 ld	a,(hl)
+		 cp	10
+		 call	z,trackup	; sector 10 bereikt => naar volgende
+		 pop	bc
+		 djnz	save_ss
+		endif
+		jr	form_end	; klaar met formateren
+
+; *** creeer een dubbelzijdige schijf
+cr_dubbel:	if	form_flg
+		 ld	b,160		; 160 tracks
+form_ds:	 push	bc
+		 call	form_track
+		 push	hl
+		 call	logtrackup
+		 pop	hl
+		 pop	bc
+		 djnz	form_ds
+		endif
+
+		if	copy_flg
+		 ld	hl,double_info	; data specific to single sided disks
+		 call	save_ssds	; make bootsector, fat, etc in memory
+		 call	side0		; terug naar side 0
+		 ld	b,14
+		 ld	de,#9000
+save_ds:	 push	bc
+		 call	ramesec		; schrijf sector met error handling
+		 ld	hl,sector_reg
+		 inc	(hl)
+		 ld	a,(hl)
+		 cp	10
+		 call	z,logtrackup	; sector 10 bereikt => naar volgende
+		 pop	bc
+		 djnz	save_ds
+		endif
+
+; *** klaar met formateren dus saven van de data
+form_end:	call	side0
+		call	res_drive	; reset voor de veiligheid voor
+					; gebruik van bdos drive routines
+		ld	a,5
+		call	seek_track
+		call	res_drive	; ff op en neer voor de veiligheid
+		call	klaar_message	; zeg klaar en wacht tot disk weg
+		ret	nc		; op ESC geduwd
+		jp	makedisk	; en maak de volgende disk aan
+
+; **************************************
+; * zeg dat disk klaar is en wacht tot ze uit de drive is
+klaar_message:	call	printsp
+		db	10,'Disk formatted, please remove it from the drive or press the ESC key',13,10,0
+kl_m2:		MSX1	#9c
+		jr	nz,kl_m3
+		call	selecdra	; selecteer drive A:
+		ret	c		; drive A: niet meer klaar => disk
+		jr	kl_m2		; is eruit
+kl_m3:		MSX1	#9f		; toets geweest
+		cp	27
+		ret	z		; ESC is klaar
+		jr	kl_m2
+
+; **************************************
+; * save sector met error handling
+; * in:  DE = ram offset
+; * uit: DE = DE + sector lengte
+		if	copy_flg
+ramesec:	 push	de
+		 call	ram_sec		; save sector
+		 or	a
+		 jr	z,ram_secnoerr
+		 call	save_error
+		 ld	hl,(errtab2)
+		 call	biterrprint
+		 call	printsp
+		 db	'Retry (y/n) ? ',0
+		 call	antwoord
+		 push	af
+		 call	printsp
+		 db	13,10,0
+		 pop	af
+		 pop	de
+		 or	a
+		 jr	nz,ramesec	; nog eens
+		 ld	sp,(savstk)
+		 jp	restore_all
+ram_secnoerr:	 inc	sp		; herstel stack
+		 inc	sp
+		 ret
+		endif
+
+; **************************************
+; * Make bootsector, fat, etc in memory
+; * in: HL = specific data for single/double sided disk
+; * Note: goto track 0, sector 1
+		if	copy_flg
+save_ssds:	 push	hl
+		 ld	hl,#9000
+		 ld	de,#9001
+		 ld	bc,512*14
+		 ld	(hl),0
+		 ldir			; erase 7 kB (14 sectors)
+		 ld	hl,bootsec
+		 ld	de,#9000
+		 ld	bc,#b8
+		 ldir			; copy boot sector data
+		 pop	hl
+		 ld	de,#9013
+		 ld	bc,4
+		 ldir			; copy offset #013..#016
+		 ld	a,(hl)
+		 ld	(#901a),a	; copy #sides (1 or 2)
+		 add	a,#f7
+		 ld	hl,#ffff
+		 cp	#f8
+		 jr	z,mk_ssfat
+mk_dsfat:	 ld	(#9800),a
+		 ld	(#9801),hl
+		 jr	mk_ssdsfat
+mk_ssfat:	 ld	(#9600),a
+		 ld	(#9601),hl
+mk_ssdsfat:	 ld	(#9200),a
+		 ld	(#9201),hl
+
+		 call	res_drive	; terug naar track 0
+		 ld	a,5
+		 call	seek_track
+		 call	res_drive	; ff op en neer voor de veiligheid
+		 ld	a,1
+		 call	selec_sec	; sector 1
+
+		 ld	a,(dos2)
+		 or	a
+		 jr	z,no_volid
+mk_volid:	 di
+		 ld	hl,(#f2b9)
+		 ld	(#9029),hl	; vol id lsb => offset #29
+		 ld	hl,(#f2bb)
+		 res	7,l		; if set, chkdsk says 'no dos2 disk'
+		 ld	(#9027),hl	; vol id msb => offset #27
+		 call	calc_vol	; bereken het nieuwe volume i.d.
+		 ei
+		 ret
+
+no_volid:	 ld	hl,#9020
+		 ld	de,#9021
+		 ld	bc,9
+		 ld	(hl),0
+		 ldir			; erase volume ID
+		 ei
+		 ret
+		endif
+
+; **************************************
+; * er is een save fout opgetreden
+		if	copy_flg
+save_error:	 push	af
+		 call	printsp
+		 db	13,10,'A save error occured, track: ',0
+		 call	prt_track	; druk het track af
+		 call	printsp
+		 db	', side: ',0
+		 ld	a,(side_reg)
+		 add	a,'0'
+		 MSX1	#a2		; side afdrukken
+		 call	printsp
+		 db	13,10,0
+		 pop	af
+		 ret
+		endif
+
+; **************************************
+; * fout opgetreden: print foutmelding en klaar
+error:		ld	hl,(errtab2)
+		call	biterrprint
+		ld	sp,(savstk)
+		jp	restore_all	; herstel alles en klaar
+
+savstk:		ds	2,0
+
+; **************************************
+; * vraag om een systeem schijf, zet de drive aan
+; * en print de tekst TRACK, SIDE op scherm
+ask_disk:	call	selecdra	; zet drive A: aan
+		jr	nc,ask_d4	; start format process
+		call	printsp
+		db	13,10
+		db	'Insert a disk in the drive or press the ESC key',13,10,0
+ask_d2:		MSX1	#9c
+		jr	nz,ask_d3
+		call	selecdra	; zet drive A: aan
+		jr	c,ask_d2	; drive nog niet klaar
+		jr	ask_d4		; wel klaar => verder gaan
+ask_d3:		MSX1	#9f
+		cp	27
+		scf
+		ret	z		; ESC is stoppen ==> C-flg teruggeven
+		jr	ask_d2		; en weer kijken
+
+ask_d4:		call	res_drive	; naar track 0 toe
+		ld	a,5
+		call	seek_track
+		call	res_drive	; ff op en neer voor de veiligheid
+		ld	a,(sides_flg)	; 0, 2 = side 0/both sides
+		and	1		;    1 = side 1
+		ld	(side_reg),a	; select correct side
+		push	af
+		ld	a,1
+		call	selec_sec	; en sector 1
+		call	printsp
+		db	13,10,'Formatting track: 00, side: ',0
+		pop	af
+		add	a,'0'
+		MSX1	#a2		; print side
+		ld	a,(systemy)
+		ld	(track_y),a
+		or	a
+		ret
+
+track_y:	db	0
+
+; **************************************
+; * bereken een nieuwe volume i.d. met de drive rom routine
+		if	copy_flg
+calc_vol:	 DI
+		 LD	A,#01
+		 LD	(#F2BD),A
+		 LD	HL,#F2B9
+		 INC	(HL)
+		 LD	A,(#F2B8)
+		 CP	(HL)
+		 JR	NZ,L6AC0
+		 LD	(HL),#00
+		 LD	A,(#F2BE)
+		 CP	#02
+		 ADC	A,#FF
+		 LD	(#F2BE),A
+		 LD	A,(#F2BF)
+		 CP	#07
+		 ADC	A,#00
+		 LD	(#F2BF),A
+L6AC0:		 LD	HL,(#F2BA)
+		 LD	A,(#F2BC)
+		 LD	C,A
+		 RRCA
+		 RRCA
+		 RRCA
+		 XOR	C
+		 RLA
+		 RLA
+		 ADC	HL,HL
+		 LD	A,C
+		 ADC	A,A
+		 LD	(#F2BC),A
+		 LD	(#F2BA),HL
+		 ei
+		 RET
+		endif
+
+; **************************************
+; * formateer track (track_reg), side (side_reg)
+; * in:  (HL) = afwijkend sector nummer
+; *      DE   = tabel met sector nummering op afwijkend track
+; * uit: (HL) = (nieuw) afwijkend sector nummer
+; *      DE   = (nieuwe) tabel met sector nummering op (nieuw) afwijkend track
+form_track:
+; ---------------------
+;		push	hl
+; ---------------------
+		ld	hl,(track_y)
+		ld	h,19
+		ld	(systemy),hl
+		call	prt_track	; druk het track af
+		ld	a,29
+		ld	(systemx),a
+		ld	a,(side_reg)
+		add	a,'0'
+		MSX1	#a2		; side afdrukken
+		ld	hl,(track_y)
+		inc	l
+		ld	h,1
+		ld	(systemy),hl	; naar volgende regel
+
+; ---------------------
+;		pop	hl		; afwijkende tracks
+;		push	de		; zet sector nummers op stack
+; ---------------------
+		ld	ix,norm_secs	; normale sector nummering
+		ld	b,9		; 9 sectors/track
+		ld	a,(side_reg)
+		or	a
+		jr	nz,form_t3	; achterkant => zeker standaard
+		ld	a,(track_reg)
+		cp	(hl)
+		jr	nz,form_t3	; geen afwijkend track => standaard
+; ---------------------
+;		push	de
+;		pop	ix		; IX = sector nummering tabel
+;		ex	(sp),hl		; HL = huidige sector tabel
+;		ld	bc,10
+;		add	hl,bc
+;		ex	(sp),hl		; onthoud nieuwe sector tabel
+;		inc	hl		; naar volgende afwijkende toe
+;		ld	b,c		; 10 sectors
+; ---------------------
+form_t3:
+; ---------------------
+;		push	hl
+; ---------------------
+		call	formdata	; maak track data aan
+		ld	de,#9000
+		call	ram_trk		; save track data
+; ---------------------
+;		pop	hl		; afwijkende tracks
+;		pop	de		; afwijkende sector nummering
+; ---------------------
+		or	a
+		ret	z
+		push	af
+		call	printsp
+		db	'A format error occured:',13,10,0
+		pop	af
+		jp	error
+
+; **************************************
+; * druk het track af
+prt_track:	ld	a,(track_reg)
+		ld	b,255
+prt_t2:		inc	b
+		sub	10
+		jr	nc,prt_t2
+		add	a,10+'0'
+		push	af
+		ld	a,b
+		add	a,'0'
+		MSX1	#a2
+		pop	af
+		JMSX1	#a2		; track nummer afdrukken
+
+; **************************************
+; * maak track data aan vanaf addr. #9000 t.b.v. track write
+; * in:  B = # sectors
+; *     IX = tabel met sector nummers
+formdata: 	push	bc
+		ld	hl,#9000
+		ld	de,#9001
+		push	hl
+		push	de
+		ld	bc,6854		; totaal aantal bytes
+		ld	(hl),#4e
+		ldir			; vul track op met eind gap data
+		pop	de
+		pop	hl
+		ld	bc,80
+		ld	(hl),#4e
+		ldir			; 80 * #4e
+		ld	(hl),0
+		ld	bc,12
+		ldir			; 12 * 0
+		ld	(hl),#f6
+		ld	bc,3
+		ldir			; 3 * #f6
+		ld	(hl),#fc
+		inc	hl
+		inc	de		; 1 * #fc
+		ld	(hl),#4e
+		ld	bc,26
+		ldir			; 26 * #4e ==> track header (122 bytes)
+		pop	bc
+
+formdat2:	push	bc
+		ld	(hl),0
+		ld	bc,12
+		ldir			; 12 * 0
+		ld	(hl),#f5
+		ld	bc,3
+		ldir			; 3 * #f5
+		ld	(hl),#fe
+		inc	hl
+		inc	de		; 1 * #fe
+		ld	a,(track_reg)
+		ld	(hl),a
+		inc	hl
+		inc	de		; 1 * track nummer
+		ld	a,(side_reg)
+		and	11
+		ld	(hl),a
+		inc	hl
+		inc	de		; 1 * side
+		ld	a,(ix+0)	; A = sector nummer
+		inc	ix
+		ld	(hl),a
+		inc	hl
+		inc	de		; 1 * sector nummer
+		ld	(hl),2
+		inc	hl
+		inc	de		; 1 * sector length
+		ld	(hl),#f7
+		inc	hl
+		inc	de		; 1 * #f7
+		ld	(hl),#4e
+		ld	bc,24
+		ldir			; 24 * #4e
+		ld	(hl),0
+		ld	bc,12
+		ldir			; 12 * 0
+		ld	(hl),#f5
+		ld	bc,3
+		ldir			; 3 * #f5
+		ld	(hl),#fb
+		inc	hl
+		inc	de		; 1 * #fb
+		ld	(hl),#e5
+		ld	bc,512
+		ldir			; 512 * #e5
+		ld	(hl),#f7
+		inc	hl
+		inc	de		; 1 * #f7
+		ld	(hl),#4e
+		ld	bc,gap3
+		ldir			; gap3 * #4e
+		pop	bc
+		djnz	formdat2
+		ret
+
+; normale sector nummering
+norm_secs:	db	1,2,3,4,5,6,7,8,9
+
+dubbel_flg:	db	0		; 0 = enkelzijdig, 1 = dubbelzijdig
+sides_flg:	db	0		; 0 = side 0
+					; 1 = side 1
+					; 2 = both sides
+dos2:		db	0		; 0 => geen dos 2, 255 => wel dos 2
+
+; byte 000..#0b7 of a double sided bootdisk
+bootsec:	db	#EB, #00, #00, #58, #53, #2D, #46, #6F
+		db	#72, #6D, #20, #00, #02, #02, #01, #00
+		db	#02, #70, #00, #A0, #05, #F9, #03, #00
+		db	#09, #00, #02, #00, #00, #00, #18, #10
+		db	#56, #4F, #4C, #5F, #49, #44, #00, #17
+		db	#64, #03, #19, #00, #00, #00, #00, #00
+		db	#D0, #ED, #53, #6A, #C0, #32, #72, #C0
+		db	#36, #67, #23, #36, #C0, #31, #1F, #F5
+		db	#11, #AB, #C0, #0E, #0F, #CD, #7D, #F3
+		db	#3C, #28, #26, #11, #00, #01, #0E, #1A
+		db	#CD, #7D, #F3, #21, #01, #00, #22, #B9
+		db	#C0, #21, #00, #3F, #11, #AB, #C0, #0E
+		db	#27, #CD, #7D, #F3, #C3, #00, #01, #69
+		db	#C0, #CD, #00, #00, #79, #E6, #FE, #D6
+		db	#02, #F6, #00, #CA, #22, #40, #11, #85
+		db	#C0, #0E, #09, #CD, #7D, #F3, #0E, #07
+		db	#CD, #7D, #F3, #18, #B8, #42, #6F, #6F
+		db	#74, #20, #65, #72, #72, #6F, #72, #0D
+		db	#0A, #50, #72, #65, #73, #73, #20, #61
+		db	#6E, #79, #20, #6B, #65, #79, #20, #66
+		db	#6F, #72, #20, #72, #65, #74, #72, #79
+		db	#0D, #0A, #24, #00, #4D, #53, #58, #44
+		db	#4F, #53, #20, #20, #53, #59, #53, #00
+
+*l+
+double_info:	db	#a0, #05, #f9, #03, #02
+single_info:	db	#d0, #02, #f8, #02, #01
+*l-
+
+*l+
+eind:
+*l-
+
+*l-
+; **************************************
+; * De jump table
+
+init_all:	equ	drvoffs+  0
+init_part:	equ	drvoffs+  3
+restore_all:	equ	drvoffs+  6
+dubbel_enkel:	equ	drvoffs+  9
+trackup:	equ	drvoffs+ 12
+logtrackup:	equ	drvoffs+ 15
+trackdown:	equ	drvoffs+ 18
+logtrackdown:	equ	drvoffs+ 21
+strch:		equ	drvoffs+ 24
+dtrch:		equ	drvoffs+ 27
+strdown:	equ	drvoffs+ 30
+dtrdown:	equ	drvoffs+ 33
+selecdra:	equ	drvoffs+ 36
+selecdrb:	equ	drvoffs+ 39
+drive_off:	equ	drvoffs+ 42
+biterrprint:	equ	drvoffs+ 45
+cursetwrt:	equ	drvoffs+ 48
+cursetrd:	equ	drvoffs+ 51
+cursaddr:	equ	drvoffs+ 54
+antwoord:	equ	drvoffs+ 57
+reportwd:	equ	drvoffs+ 60
+printhl:	equ	drvoffs+ 63
+printsp:	equ	drvoffs+ 66
+sel_drivea:	equ	drvoffs+ 69
+sel_driveb:	equ	drvoffs+ 72
+step_in:	equ	drvoffs+ 75
+step_out:	equ	drvoffs+ 78
+seek_track:	equ	drvoffs+ 81
+res_drive:	equ	drvoffs+ 84
+side0:		equ	drvoffs+ 87
+side1:		equ	drvoffs+ 90
+selec_sec:	equ	drvoffs+ 93
+sec_vrm:	equ	drvoffs+ 96
+sec_ram:	equ	drvoffs+ 99
+adm_ram:	equ	drvoffs+102
+trk_ram:	equ	drvoffs+105
+drv_vrm:	equ	drvoffs+108
+drv_ram:	equ	drvoffs+111
+vrm_sec:	equ	drvoffs+114
+ram_sec:	equ	drvoffs+117
+ram_trk:	equ	drvoffs+120
+vrm_drv:	equ	drvoffs+123
+ram_drv:	equ	drvoffs+126
+set_command:	equ	drvoffs+129
+exe_command:	equ	drvoffs+132
+wacht30ms:	equ	drvoffs+135
+
+; **************************************
+; * De variabelen
+
+kopa:		equ	drvoffs+#c6
+kopb:		equ	drvoffs+#c7
+seca:		equ	drvoffs+#c8
+secb:		equ	drvoffs+#c9
+sidea:		equ	drvoffs+#ca
+sideb:		equ	drvoffs+#cb
+
+lezen:		equ	drvoffs+#cc
+
+bdrive:		equ	drvoffs+#cd
+singles:	equ	drvoffs+#ce
+lastdrive:	equ	drvoffs+#cf
+
+fout:		equ	drvoffs+#d0
+
+save_fd9a:	equ	drvoffs+#d1
+save_fd9f:	equ	drvoffs+#d2
+
+maxtrack:	equ	drvoffs+#d3
+
+antw_yes:	equ	drvoffs+#d4
+antw_no:	equ	drvoffs+#d5
+
+errtab1:	equ	drvoffs+#d6
+errtab2:	equ	drvoffs+#d8
+errtab3:	equ	drvoffs+#da
+
+track_reg:	equ	drvoffs+#dc
+sector_reg:	equ	drvoffs+#dd
+side_reg:	equ	drvoffs+#de
+
+*l+
+
